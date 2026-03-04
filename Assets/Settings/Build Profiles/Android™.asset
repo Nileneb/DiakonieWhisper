@@ -37,7 +37,8 @@ MonoBehaviour:
     - line: '|   accelerometerFrequency: 60'
     - line: '|   companyName: Bergische-Diakonie'
     - line: '|   productName: DiakonieWhisper'
-    - line: '|   defaultCursor: {instanceID: 0}'
+    - line: '|   defaultCursor: {fileID: 2800000, guid: 8f39e899f7295f344b2331a0f80ab6a0,
+        type: 3}'
     - line: '|   cursorHotspot: {x: 0, y: 0}'
     - line: '|   m_SplashScreenBackgroundColor: {r: 0.13725491, g: 0.12156863, b:
         0.1254902, a: 1}'
@@ -872,7 +873,7 @@ MonoBehaviour:
         m_ExportAsGoogleAndroidProject: 0
         m_DebugSymbolLevel: 4
         m_DebugSymbolFormat: 5
-        m_CurrentDeploymentTargetId: RZCY40JDT9W
+        m_CurrentDeploymentTargetId: __builtin__target_default
         m_BuildType: 1
         m_LinkTimeOptimization: 0
         m_BuildAppBundle: 0
