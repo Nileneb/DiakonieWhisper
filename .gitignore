@@ -75,3 +75,14 @@ crashlytics-build.properties
 # Temporary auto-generated Android Assets
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
+Assets/LLMUnity
+*/Assets/LLMUnity
+*.meta
+*/StreamingAssets/
+*.vscode
+Assets/Plugins/Roslyn/System.Reflection.Metadata.dll
+Assets/Plugins/Roslyn/System.Collections.Immutable.dll
+Assets/Plugins/Roslyn/Microsoft.CodeAnalysis.dll
+.gitignore
+Assets/Plugins/Roslyn/Microsoft.CodeAnalysis.CSharp.dll
+.vscode/c_cpp_properties.json

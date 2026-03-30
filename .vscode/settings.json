@@ -124,5 +124,21 @@
   "C_Cpp_Runner.useLeakSanitizer": false,
   "C_Cpp_Runner.showCompilationTime": false,
   "C_Cpp_Runner.useLinkTimeOptimization": false,
-  "C_Cpp_Runner.msvcSecureNoWarnings": false
+  "C_Cpp_Runner.msvcSecureNoWarnings": false,
+  "chat.mcp.serverSampling": {
+    "DiakonieWhisper/.vscode/mcp.json: coplaydev/unity-mcp": {
+      "allowedModels": [
+        "copilot/auto",
+        "copilot/claude-haiku-4.5",
+        "copilotcli/claude-opus-4.6",
+        "copilot/claude-opus-4.6",
+        "copilotcli/claude-sonnet-4.6",
+        "copilot/claude-sonnet-4.6",
+        "copilot/gpt-4.1"
+      ]
+    }
+  },
+  "chat.mcp.gallery.enabled": true,
+  "chat.mcp.assisted.nuget.enabled": true,
+  "C_Cpp.windowsErrorReportingMode": "disabled"
 }

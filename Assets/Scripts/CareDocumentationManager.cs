@@ -18,6 +18,7 @@ namespace BergischeDiakonie.Speech
         [Header("References")]
         public AudioCaptureService audioCapture;
         public ModelDownloader modelDownloader;
+        public LocalDocumentationService localDocService;
 
         [Header("Model File Names (flat, in ModelDownloader.ModelDirectory)")]
         public string vadModel = "silero_vad.onnx";
@@ -347,6 +348,10 @@ namespace BergischeDiakonie.Speech
 
                 OnProtocolSaved?.Invoke(path);
                 OnStatusMessage?.Invoke($"Gespeichert: {fn}");
+
+                // Trigger local LLM rewrite; errors are handled inside the service
+                if (localDocService != null)
+                    _ = localDocService.ProcessProtocol(protocol);
             }
             catch (Exception e)
             {

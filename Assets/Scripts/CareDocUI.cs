@@ -30,7 +30,15 @@ namespace BergischeDiakonie.Speech
         public TMP_Text txtCurrentWebhook;
         public Button btnExport;
 
+        [Header("Local Documentation")]
+        [Tooltip("Optional: LocalDocumentationService for local LLM rewriting. Leave null to disable.")]
+        public LocalDocumentationService localDocService;
+
         readonly Queue<System.Action> _q = new Queue<System.Action>();
+
+        // Accumulated LLM streaming output for the current session
+        string _llmOutput = "";
+        bool _llmStarted;
 
         void Start()
         {
@@ -49,6 +57,8 @@ namespace BergischeDiakonie.Speech
                         if (btnStop) btnStop.interactable = true;
                         if (btnExport) btnExport.interactable = false;
                         if (txtTranscript) txtTranscript.text = "";
+                        _llmOutput = "";
+                        _llmStarted = false;
                     }
                     else
                     {
@@ -98,6 +108,9 @@ namespace BergischeDiakonie.Speech
             {
                 if (txtStatus) txtStatus.text = $"Gespeichert: {System.IO.Path.GetFileName(p)}";
                 if (btnExport) btnExport.interactable = true;
+                // Reset LLM streaming buffer so the new protocol starts clean
+                _llmOutput = "";
+                _llmStarted = false;
             });
 
             // Enable Record button once init is done
@@ -111,6 +124,37 @@ namespace BergischeDiakonie.Speech
                 _q.Enqueue(() => { if (txtStatus) txtStatus.text = m; });
             manager.Webhook.OnComplete += (ok, msg) =>
                 _q.Enqueue(() => { if (txtStatus) txtStatus.text = msg; });
+
+            // ── Local LLM events ─────────────────────────────────
+            if (localDocService != null)
+            {
+                localDocService.OnStatusMessage += m =>
+                    _q.Enqueue(() => { if (txtStatus) txtStatus.text = m; });
+
+                localDocService.OnPartialResult += token => _q.Enqueue(() =>
+                {
+                    if (!txtTranscript) return;
+                    if (!_llmStarted)
+                    {
+                        _llmStarted = true;
+                        _llmOutput = "── Strukturierte Dokumentation ──\n";
+                    }
+                    _llmOutput += token;
+                    txtTranscript.text = _llmOutput;
+                    if (scrollRect) scrollRect.verticalNormalizedPosition = 0f;
+                });
+
+                localDocService.OnProcessingComplete += path => _q.Enqueue(() =>
+                {
+                    if (txtStatus)
+                        txtStatus.text = $"Dokumentation gespeichert: {System.IO.Path.GetFileName(path)}";
+                });
+
+                localDocService.OnProcessingError += err => _q.Enqueue(() =>
+                {
+                    if (txtStatus) txtStatus.text = $"LLM-Fehler: {err}";
+                });
+            }
         }
 
         // ── Webhook setup ───────────────────────────────────────
