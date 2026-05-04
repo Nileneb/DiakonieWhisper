@@ -402,46 +402,46 @@ namespace BergischeDiakonie.Speech
                 List<AsrService.TranscriptResult> transcripts = null;
                 List<DiarizationService.SpeakerSegment> speakers = null;
 
+                // Step 1: Diarization — provides both speaker labels and reliable segmentation.
+                // VAD (Silero) is not used for batch because it is designed for real-time streaming
+                // (512-sample chunks) and produces almost no segments on large arrays.
+                OnStatusMessage?.Invoke("Sprechererkennung...");
+                await UniTask.RunOnThreadPool(() => { speakers = _diarizer.Process(samples); });
+
+                if (speakers.Count == 0)
+                {
+                    OnStatusMessage?.Invoke("Keine Sprecher erkannt.");
+                    return;
+                }
+
+                // Step 2: ASR on each diarization segment (sub-chunk at 28s for Whisper's window)
+                OnStatusMessage?.Invoke($"Transkribiere {speakers.Count} Segmente...");
                 await UniTask.RunOnThreadPool(() =>
                 {
                     transcripts = new List<AsrService.TranscriptResult>();
-                    var segs = _vad.Process(samples);
-                    _vad.Flush();
-                    var allSegs = _vad.DrainSegments();
-                    allSegs.InsertRange(0, segs);
-                    _vad.Reset();
+                    const int maxChunkSamples = 16000 * 28;
 
-                    Debug.Log($"[BatchProcess] VAD: {allSegs.Count} Segmente, Datei: {samples.Length / 16000f:F1}s");
-
-                    if (allSegs.Count == 0)
+                    foreach (var seg in speakers)
                     {
-                        // Whisper hat ein 30s-Fenster — lange Dateien müssen manuell gechunkt werden
-                        const int chunkSamples = 16000 * 28; // 28s mit etwas Puffer
-                        int chunkIdx = 0;
-                        for (int offset = 0; offset < samples.Length; offset += chunkSamples)
+                        int startIdx = (int)(seg.StartSec * 16000);
+                        int endIdx   = (int)(seg.EndSec   * 16000);
+                        startIdx = Math.Max(0, Math.Min(startIdx, samples.Length - 1));
+                        endIdx   = Math.Max(0, Math.Min(endIdx,   samples.Length));
+                        if (endIdx <= startIdx) continue;
+
+                        for (int offset = startIdx; offset < endIdx; offset += maxChunkSamples)
                         {
-                            int len = Math.Min(chunkSamples, samples.Length - offset);
+                            int len = Math.Min(maxChunkSamples, endIdx - offset);
                             var chunk = new float[len];
                             Array.Copy(samples, offset, chunk, 0, len);
-                            float startSec = offset / 16000f;
-                            var t = _asr.Transcribe(chunk, startSec);
-                            Debug.Log($"[BatchProcess] Chunk {chunkIdx++} ({startSec:F0}s): '{t.Text}'");
+                            float chunkStartSec = (float)offset / 16000f;
+                            var t = _asr.Transcribe(chunk, chunkStartSec);
                             if (!string.IsNullOrWhiteSpace(t.Text)) transcripts.Add(t);
                         }
                     }
-                    else
-                    {
-                        foreach (var s in allSegs)
-                        {
-                            var t = _asr.Transcribe(s.Samples, s.StartTimeSec);
-                            if (!string.IsNullOrEmpty(t.Text)) transcripts.Add(t);
-                        }
-                    }
 
-                    Debug.Log($"[BatchProcess] ASR fertig: {transcripts.Count} Transkripte");
+                    Debug.Log($"[BatchProcess] ASR: {transcripts.Count} Transkripte aus {speakers.Count} Segmenten");
                 });
-
-                await UniTask.RunOnThreadPool(() => { speakers = _diarizer.Process(samples); });
 
                 var merged = TranscriptMergeService.Merge(transcripts, speakers);
                 foreach (var l in merged)
