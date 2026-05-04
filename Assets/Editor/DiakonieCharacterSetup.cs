@@ -4,15 +4,17 @@ using UnityEditor;
 using UnityEditor.Animations;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.UI;
 using BergischeDiakonie.Speech;
 
 /// <summary>
 /// Diakonie > Setup Character — baut HatWanderer.glb als animierten Charakter
-/// per Viewport-Rect in der Ecke ein (kein RenderTexture, 2D-Pipeline bleibt unberührt).
+/// in der Canvas-Ecke ein (RenderTexture → RawImage, über 2D-UI sichtbar).
 /// </summary>
 public static class DiakonieCharacterSetup
 {
     const string GlbPath        = "Assets/Mesh/HatWanderer.glb";
+    const string RtPath         = "Assets/RenderTextures/CharacterRT.renderTexture";
     const string ControllerPath = "Assets/Animations/HatWandererController.controller";
     const int    CharLayer      = 8;
     const string CharLayerName  = "Character";
@@ -28,6 +30,8 @@ public static class DiakonieCharacterSetup
 
         EnsureLayer(CharLayerName, CharLayer);
 
+        var rt = EnsureRenderTexture();
+
         // Main Camera sieht den Character-Layer nicht
         if (Camera.main != null)
         {
@@ -35,19 +39,12 @@ public static class DiakonieCharacterSetup
             EditorUtility.SetDirty(Camera.main);
         }
 
-        // Altes RT-Panel entfernen (blockierte BtnUpload-Raycasts)
-        var canvas = Object.FindFirstObjectByType<Canvas>();
-        if (canvas != null)
-        {
-            var oldPanel = canvas.transform.Find("CharacterPanel");
-            if (oldPanel != null) Object.DestroyImmediate(oldPanel.gameObject);
-        }
-
         // Stage-Container weit weg von der 2D-Szene
         var stage = GameObject.Find("CharacterStage") ?? new GameObject("CharacterStage");
         stage.transform.position = new Vector3(1000, 0, 0);
 
-        SetupCharacterCamera(stage);
+        var rawImg = SetupUI(rt);
+        SetupCharacterCamera(stage, rt);
         var charGO = SetupCharacterMesh(stage);
 
         if (charGO != null)
@@ -60,37 +57,81 @@ public static class DiakonieCharacterSetup
         var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene, "Assets/Scenes/Main.unity");
-        Debug.Log("[CharacterSetup] ✓ HatWanderer eingebaut (Viewport). Play drücken um Animationen zu sehen.");
+        Debug.Log("[CharacterSetup] ✓ HatWanderer eingebaut. Play drücken um Animationen zu sehen.");
     }
 
-    // ── CharacterCamera (Viewport-Rect, kein RenderTexture) ───────────────
+    // ── RenderTexture ─────────────────────────────────────────────────────
 
-    static void SetupCharacterCamera(GameObject stage)
+    static RenderTexture EnsureRenderTexture()
+    {
+        Directory.CreateDirectory("Assets/RenderTextures");
+        AssetDatabase.Refresh();
+
+        var existing = AssetDatabase.LoadAssetAtPath<RenderTexture>(RtPath);
+        if (existing != null) return existing;
+
+        var rt = new RenderTexture(256, 512, 16, RenderTextureFormat.ARGB32);
+        rt.name = "CharacterRT";
+        rt.Create();
+        AssetDatabase.CreateAsset(rt, RtPath);
+        AssetDatabase.SaveAssets();
+        return rt;
+    }
+
+    // ── CharacterCamera ───────────────────────────────────────────────────
+
+    static void SetupCharacterCamera(GameObject stage, RenderTexture rt)
     {
         var existing = stage.transform.Find("CharacterCamera");
         var camGO = existing != null ? existing.gameObject : new GameObject("CharacterCamera");
         camGO.transform.SetParent(stage.transform, false);
         camGO.transform.localPosition = new Vector3(0, 110f, -280f);
-        camGO.transform.localRotation = Quaternion.Euler(22f, 0f, 0f); // leicht nach unten auf Char
+        // Fix 1: 22° nach unten — atan(110/280) ≈ 21.4°, Charakter war außerhalb FOV
+        camGO.transform.localRotation = Quaternion.Euler(22f, 0f, 0f);
 
         var cam = camGO.GetComponent<Camera>();
         if (cam == null) cam = camGO.AddComponent<Camera>();
-        cam.clearFlags      = CameraClearFlags.Depth; // rendert über Main Camera ohne Background zu löschen
-        cam.backgroundColor = Color.clear;
+        cam.clearFlags      = CameraClearFlags.SolidColor;
+        cam.backgroundColor = Color.clear;       // transparenter Hintergrund
         cam.cullingMask     = 1 << CharLayer;
-        cam.targetTexture   = null;
-        cam.depth           = 1;   // nach Main Camera (depth 0 oder -1)
+        cam.targetTexture   = rt;                // Fix 2: direkt setzen, kein null
+        cam.depth           = 0;                 // Main Camera depth=-1
+        cam.rect            = new Rect(0, 0, 1, 1);
         cam.fieldOfView     = 38f;
         cam.nearClipPlane   = 1f;
         cam.farClipPlane    = 2000f;
         cam.allowHDR        = false;
         cam.allowMSAA       = false;
-        cam.rect            = new Rect(0.72f, 0.02f, 0.26f, 0.42f); // unten-rechts (normalized screen)
         EditorUtility.SetDirty(cam);
+    }
 
-        // CharacterView (altes RT-Script) entfernen falls noch vorhanden
-        var oldView = camGO.GetComponent<CharacterView>();
-        if (oldView != null) Object.DestroyImmediate(oldView);
+    // ── UI RawImage ───────────────────────────────────────────────────────
+
+    static RawImage SetupUI(RenderTexture rt)
+    {
+        var canvas = Object.FindFirstObjectByType<Canvas>();
+        if (canvas == null) { Debug.LogError("[CharacterSetup] Canvas nicht gefunden."); return null; }
+
+        var old = canvas.transform.Find("CharacterPanel");
+        if (old != null) Object.DestroyImmediate(old.gameObject);
+
+        var panelGO = new GameObject("CharacterPanel");
+        panelGO.transform.SetParent(canvas.transform, false);
+
+        var img = panelGO.AddComponent<RawImage>();
+        img.texture       = rt;
+        img.color         = Color.white;
+        img.raycastTarget = false; // Fix 3: BtnUpload-Raycasts durchlassen
+
+        var rect = panelGO.GetComponent<RectTransform>();
+        rect.anchorMin        = new Vector2(1, 0);
+        rect.anchorMax        = new Vector2(1, 0);
+        rect.pivot            = new Vector2(1, 0);
+        rect.anchoredPosition = new Vector2(-12, 12);
+        rect.sizeDelta        = new Vector2(200, 320);
+
+        EditorUtility.SetDirty(panelGO);
+        return img;
     }
 
     // ── Character Mesh + AnimatorController ───────────────────────────────
@@ -112,7 +153,7 @@ public static class DiakonieCharacterSetup
         charGO.transform.SetParent(stage.transform, false);
         charGO.transform.localPosition = Vector3.zero;
         charGO.transform.localRotation = Quaternion.Euler(0, 180f, 0);
-        charGO.transform.localScale    = Vector3.one * 100f; // Meshy.ai GLB = 0.01 Unity-Units
+        charGO.transform.localScale    = Vector3.one * 100f;
         SetLayerRecursive(charGO, CharLayer);
 
         var controller = BuildAnimatorController();
