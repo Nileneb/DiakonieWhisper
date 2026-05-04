@@ -2,9 +2,6 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
-#if UNITY_STANDALONE
-using SFB;
-#endif
 
 namespace BergischeDiakonie.Speech
 {
@@ -180,30 +177,12 @@ namespace BergischeDiakonie.Speech
         {
             if (!btnUpload) return;
 
+            // Toggle the file-path input panel — user pastes or types the WAV path
             btnUpload.onClick.AddListener(() =>
             {
-#if UNITY_STANDALONE
-                StandaloneFileBrowser.OpenFilePanelAsync(
-                    "Audio-Datei wählen", "",
-                    new[] { new ExtensionFilter("Audio", "wav") },
-                    false,
-                    paths =>
-                    {
-                        if (paths != null && paths.Length > 0 && !string.IsNullOrEmpty(paths[0]))
-                            manager.ProcessFile(paths[0]);
-                    });
-#else
-                // Android: zeige Fallback-Panel mit Pfad-Eingabe
-                if (panelFilePath) panelFilePath.SetActive(!panelFilePath.activeSelf);
-#endif
+                if (panelFilePath)
+                    panelFilePath.SetActive(!panelFilePath.activeSelf);
             });
-
-            // Android fallback: "Laden"-Button im panelFilePath (optional)
-            if (inputFilePath)
-            {
-                // Ein zweiter Button im panelFilePath kann ProcessFile aufrufen.
-                // Verdrahtung im Inspector: Button.onClick → CareDocUI.LoadFromInputPath()
-            }
         }
 
         public void LoadFromInputPath()
