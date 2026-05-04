@@ -85,7 +85,7 @@ public static class DiakonieCharacterSetup
         var existing = stage.transform.Find("CharacterCamera");
         var camGO = existing != null ? existing.gameObject : new GameObject("CharacterCamera");
         camGO.transform.SetParent(stage.transform, false);
-        camGO.transform.localPosition = new Vector3(0, 1.1f, -2.8f);
+        camGO.transform.localPosition = new Vector3(0, 110f, -280f); // skaliert mit Char x100
         camGO.transform.localRotation = Quaternion.identity;
 
         var cam = camGO.GetComponent<Camera>();
@@ -93,14 +93,19 @@ public static class DiakonieCharacterSetup
         cam.clearFlags       = CameraClearFlags.SolidColor;
         cam.backgroundColor  = Color.clear;
         cam.cullingMask      = 1 << CharLayer;
-        cam.targetTexture    = rt;
+        cam.targetTexture    = null; // CharacterView setzt RT zur Laufzeit
         cam.depth            = 0;
         cam.fieldOfView      = 38f;
-        cam.nearClipPlane    = 0.1f;
-        cam.farClipPlane     = 20f;
+        cam.nearClipPlane    = 1f;
+        cam.farClipPlane     = 2000f;
         cam.allowHDR         = false;
         cam.allowMSAA        = false;
         EditorUtility.SetDirty(cam);
+
+        // CharacterView erstellt RT bei Awake und weist es Camera + RawImage zu
+        var view = camGO.GetComponent<CharacterView>();
+        if (view == null) view = camGO.AddComponent<CharacterView>();
+        EditorUtility.SetDirty(view);
     }
 
     // ── Character Mesh + AnimatorController ───────────────────────────────
@@ -123,7 +128,7 @@ public static class DiakonieCharacterSetup
         charGO.transform.SetParent(stage.transform, false);
         charGO.transform.localPosition = Vector3.zero;
         charGO.transform.localRotation = Quaternion.Euler(0, 180f, 0);
-        charGO.transform.localScale    = Vector3.one;
+        charGO.transform.localScale    = Vector3.one * 100f; // Meshy.ai GLB = 0.01 Unity-Units
         SetLayerRecursive(charGO, CharLayer);
 
         // AnimatorController aus GLB-Clips bauen
