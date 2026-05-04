@@ -374,10 +374,6 @@ namespace BergischeDiakonie.Speech
 
                 OnProtocolSaved?.Invoke(path);
                 OnStatusMessage?.Invoke($"Gespeichert: {fn}");
-
-                // Trigger local LLM rewrite; errors are handled inside the service
-                if (localDocService != null)
-                    _ = localDocService.ProcessProtocol(protocol);
             }
             catch (Exception e)
             {
@@ -415,14 +411,34 @@ namespace BergischeDiakonie.Speech
                     allSegs.InsertRange(0, segs);
                     _vad.Reset();
 
+                    Debug.Log($"[BatchProcess] VAD: {allSegs.Count} Segmente, Datei: {samples.Length / 16000f:F1}s");
+
                     if (allSegs.Count == 0)
-                        transcripts.Add(_asr.Transcribe(samples, 0f));
+                    {
+                        // Whisper hat ein 30s-Fenster — lange Dateien müssen manuell gechunkt werden
+                        const int chunkSamples = 16000 * 28; // 28s mit etwas Puffer
+                        int chunkIdx = 0;
+                        for (int offset = 0; offset < samples.Length; offset += chunkSamples)
+                        {
+                            int len = Math.Min(chunkSamples, samples.Length - offset);
+                            var chunk = new float[len];
+                            Array.Copy(samples, offset, chunk, 0, len);
+                            float startSec = offset / 16000f;
+                            var t = _asr.Transcribe(chunk, startSec);
+                            Debug.Log($"[BatchProcess] Chunk {chunkIdx++} ({startSec:F0}s): '{t.Text}'");
+                            if (!string.IsNullOrWhiteSpace(t.Text)) transcripts.Add(t);
+                        }
+                    }
                     else
+                    {
                         foreach (var s in allSegs)
                         {
                             var t = _asr.Transcribe(s.Samples, s.StartTimeSec);
                             if (!string.IsNullOrEmpty(t.Text)) transcripts.Add(t);
                         }
+                    }
+
+                    Debug.Log($"[BatchProcess] ASR fertig: {transcripts.Count} Transkripte");
                 });
 
                 await UniTask.RunOnThreadPool(() => { speakers = _diarizer.Process(samples); });
@@ -451,6 +467,14 @@ namespace BergischeDiakonie.Speech
                 OnStatusMessage?.Invoke($"Fehler: {e.Message}");
                 Debug.LogError($"[CareDoc] BatchProcess: {e}");
             }
+        }
+
+        /// <summary>Manuell die LLM-Nachbearbeitung des zuletzt gespeicherten Protokolls starten.</summary>
+        public void TriggerLLMProcessing()
+        {
+            if (localDocService == null) { OnStatusMessage?.Invoke("Kein LLM-Service konfiguriert."); return; }
+            if (string.IsNullOrWhiteSpace(LastProtocol)) { OnStatusMessage?.Invoke("Kein Protokoll vorhanden."); return; }
+            _ = localDocService.ProcessProtocol(LastProtocol);
         }
 
         void OnDestroy()

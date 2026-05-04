@@ -31,6 +31,10 @@ namespace BergischeDiakonie.Speech
         public GameObject panelFilePath;
         public TMP_InputField inputFilePath;
 
+        [Header("LLM Processing")]
+        [Tooltip("Startet LLM-Nachbearbeitung des aktuellen Protokolls (manuell)")]
+        public Button btnLLM;
+
         [Header("Webhook Export")]
         public TMP_InputField inputWebhookUrl;
         public TMP_Text txtCurrentWebhook;
@@ -95,6 +99,7 @@ namespace BergischeDiakonie.Speech
 
             // ── Audio Upload ────────────────────────────────────
             SetupUploadUI();
+            SetupLLMButton();
 
             // ── Webhook UI ──────────────────────────────────────
             SetupWebhookUI();
@@ -123,6 +128,7 @@ namespace BergischeDiakonie.Speech
                 if (txtStatus) txtStatus.text = $"Gespeichert: {System.IO.Path.GetFileName(p)}";
                 if (btnExport) btnExport.interactable = true;
                 if (inputTranscript) inputTranscript.interactable = true;
+                if (btnLLM) btnLLM.interactable = true;
                 _llmOutput = "";
                 _llmStarted = false;
             });
@@ -169,6 +175,19 @@ namespace BergischeDiakonie.Speech
                     if (txtStatus) txtStatus.text = $"LLM-Fehler: {err}";
                 });
             }
+        }
+
+        // ── LLM button setup ────────────────────────────────────
+
+        void SetupLLMButton()
+        {
+            if (!btnLLM) return;
+            btnLLM.interactable = false;
+            btnLLM.onClick.AddListener(() =>
+            {
+                btnLLM.interactable = false;
+                manager.TriggerLLMProcessing();
+            });
         }
 
         // ── Upload setup ────────────────────────────────────────

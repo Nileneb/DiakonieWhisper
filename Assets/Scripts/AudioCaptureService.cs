@@ -148,15 +148,43 @@ namespace BergischeDiakonie.Speech
 
         // ── WAV loading ─────────────────────────────────────────
 
-        /// <summary>Load a 16-bit PCM WAV → 16 kHz mono float[].</summary>
+        /// <summary>Load a 16-bit PCM WAV → 16 kHz mono float[].
+        /// Searches for the "data" chunk instead of assuming fixed offset 44,
+        /// so WAVs with extra metadata chunks (LIST, fact, etc.) are handled correctly.</summary>
         public float[] LoadWavFile(string path)
         {
             byte[] b = System.IO.File.ReadAllBytes(path);
-            int ch = BitConverter.ToInt16(b, 22);
-            int sr = BitConverter.ToInt32(b, 24);
+
+            // fmt chunk always starts at byte 12 in standard RIFF/WAVE files
+            int ch  = BitConverter.ToInt16(b, 22);
+            int sr  = BitConverter.ToInt32(b, 24);
             int bps = BitConverter.ToInt16(b, 34);
-            int off = 44; int bpS = bps / 8;
-            int n = (b.Length - off) / bpS / ch;
+            int bpS = bps / 8;
+
+            // Walk RIFF chunks from byte 12 to find "data"
+            int off = 12;
+            int dataLen = 0;
+            while (off + 8 <= b.Length)
+            {
+                string tag      = System.Text.Encoding.ASCII.GetString(b, off, 4);
+                int    chunkLen = BitConverter.ToInt32(b, off + 4);
+                off += 8;
+                if (tag == "data") { dataLen = chunkLen; break; }
+                off += chunkLen + (chunkLen & 1); // skip chunk + padding byte if odd
+            }
+
+            if (dataLen == 0)
+            {
+                Debug.LogError($"[LoadWAV] 'data' chunk nicht gefunden in: {path}");
+                return new float[0];
+            }
+
+            // Clamp to actual file size in case the header lies
+            dataLen = Math.Min(dataLen, b.Length - off);
+
+            int n = dataLen / bpS / ch;
+            Debug.Log($"[LoadWAV] {path}: ch={ch} sr={sr}Hz bps={bps} dataOffset={off} n={n} ({n / (float)sr:F1}s)");
+
             float[] m = new float[n];
             for (int i = 0; i < n; i++)
             {
@@ -165,7 +193,13 @@ namespace BergischeDiakonie.Speech
                     s += BitConverter.ToInt16(b, off + (i * ch + c) * bpS) / 32768f;
                 m[i] = s / ch;
             }
-            return sr != targetSampleRate ? Resample(m, sr, targetSampleRate) : m;
+
+            if (sr != targetSampleRate)
+            {
+                Debug.Log($"[LoadWAV] Resampling {sr}Hz → {targetSampleRate}Hz");
+                return Resample(m, sr, targetSampleRate);
+            }
+            return m;
         }
 
         public static float[] Resample(float[] src, int from, int to)

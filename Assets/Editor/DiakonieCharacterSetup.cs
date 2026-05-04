@@ -7,10 +7,6 @@ using UnityEngine;
 using UnityEngine.UI;
 using BergischeDiakonie.Speech;
 
-/// <summary>
-/// Diakonie > Setup Character — baut HatWanderer.glb als animierten Charakter
-/// in der Canvas-Ecke ein (RenderTexture → RawImage, über 2D-UI sichtbar).
-/// </summary>
 public static class DiakonieCharacterSetup
 {
     const string GlbPath        = "Assets/Mesh/HatWanderer.glb";
@@ -32,32 +28,41 @@ public static class DiakonieCharacterSetup
 
         var rt = EnsureRenderTexture();
 
-        // Main Camera sieht den Character-Layer nicht
         if (Camera.main != null)
         {
             Camera.main.cullingMask &= ~(1 << CharLayer);
             EditorUtility.SetDirty(Camera.main);
         }
 
-        // Stage-Container weit weg von der 2D-Szene
         var stage = GameObject.Find("CharacterStage") ?? new GameObject("CharacterStage");
         stage.transform.position = new Vector3(1000, 0, 0);
 
-        var rawImg = SetupUI(rt);
+        SetupUI(rt);
         SetupCharacterCamera(stage, rt);
         var charGO = SetupCharacterMesh(stage);
 
         if (charGO != null)
         {
+            // CharacterAnimator drives clip cycling
             if (charGO.GetComponent<CharacterAnimator>() == null)
                 charGO.AddComponent<CharacterAnimator>();
+
+            // CharacterView on camera auto-frames at runtime
+            var camTf = stage.transform.Find("CharacterCamera");
+            if (camTf != null)
+            {
+                var cv = camTf.GetComponent<CharacterView>() ?? camTf.gameObject.AddComponent<CharacterView>();
+                cv.target = charGO.transform;
+                EditorUtility.SetDirty(camTf.gameObject);
+            }
+
             EditorUtility.SetDirty(charGO);
         }
 
         var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene, "Assets/Scenes/Main.unity");
-        Debug.Log("[CharacterSetup] ✓ HatWanderer eingebaut. Play drücken um Animationen zu sehen.");
+        Debug.Log("[CharacterSetup] ✓ Fertig. Play drücken — CharacterView framt den Charakter automatisch.");
     }
 
     // ── RenderTexture ─────────────────────────────────────────────────────
@@ -85,19 +90,18 @@ public static class DiakonieCharacterSetup
         var existing = stage.transform.Find("CharacterCamera");
         var camGO = existing != null ? existing.gameObject : new GameObject("CharacterCamera");
         camGO.transform.SetParent(stage.transform, false);
-        camGO.transform.localPosition = new Vector3(0, 110f, -280f);
-        // Fix 1: 22° nach unten — atan(110/280) ≈ 21.4°, Charakter war außerhalb FOV
-        camGO.transform.localRotation = Quaternion.Euler(22f, 0f, 0f);
+        // Initial estimate — CharacterView corrects this at runtime via bounds
+        camGO.transform.localPosition = new Vector3(0, 90f, -350f);
+        camGO.transform.localRotation = Quaternion.identity;
 
-        var cam = camGO.GetComponent<Camera>();
-        if (cam == null) cam = camGO.AddComponent<Camera>();
+        var cam = camGO.GetComponent<Camera>() ?? camGO.AddComponent<Camera>();
         cam.clearFlags      = CameraClearFlags.SolidColor;
-        cam.backgroundColor = Color.clear;       // transparenter Hintergrund
+        cam.backgroundColor = Color.clear;
         cam.cullingMask     = 1 << CharLayer;
-        cam.targetTexture   = rt;                // Fix 2: direkt setzen, kein null
-        cam.depth           = 0;                 // Main Camera depth=-1
+        cam.targetTexture   = rt;
+        cam.depth           = 0;
         cam.rect            = new Rect(0, 0, 1, 1);
-        cam.fieldOfView     = 38f;
+        cam.fieldOfView     = 50f;
         cam.nearClipPlane   = 1f;
         cam.farClipPlane    = 2000f;
         cam.allowHDR        = false;
@@ -107,10 +111,13 @@ public static class DiakonieCharacterSetup
 
     // ── UI RawImage ───────────────────────────────────────────────────────
 
-    static RawImage SetupUI(RenderTexture rt)
+    static void SetupUI(RenderTexture rt)
     {
-        var canvas = Object.FindFirstObjectByType<Canvas>();
-        if (canvas == null) { Debug.LogError("[CharacterSetup] Canvas nicht gefunden."); return null; }
+        // Always target the named canvas "Canvas" (SortingOrder 1), not the first found
+        var canvasGO = GameObject.Find("Canvas");
+        var canvas = canvasGO?.GetComponent<Canvas>();
+        if (canvas == null) canvas = Object.FindFirstObjectByType<Canvas>();
+        if (canvas == null) { Debug.LogError("[CharacterSetup] Canvas nicht gefunden."); return; }
 
         var old = canvas.transform.Find("CharacterPanel");
         if (old != null) Object.DestroyImmediate(old.gameObject);
@@ -121,17 +128,19 @@ public static class DiakonieCharacterSetup
         var img = panelGO.AddComponent<RawImage>();
         img.texture       = rt;
         img.color         = Color.white;
-        img.raycastTarget = false; // Fix 3: BtnUpload-Raycasts durchlassen
+        img.raycastTarget = false;
 
         var rect = panelGO.GetComponent<RectTransform>();
-        rect.anchorMin        = new Vector2(1, 0);
-        rect.anchorMax        = new Vector2(1, 0);
-        rect.pivot            = new Vector2(1, 0);
-        rect.anchoredPosition = new Vector2(-12, 12);
-        rect.sizeDelta        = new Vector2(200, 320);
+        rect.anchorMin        = Vector2.zero;
+        rect.anchorMax        = Vector2.zero;
+        rect.pivot            = Vector2.zero;
+        rect.anchoredPosition = new Vector2(12, 12);
+        rect.sizeDelta        = new Vector2(200, 640);
+
+        // Render on top of other UI elements
+        panelGO.transform.SetAsLastSibling();
 
         EditorUtility.SetDirty(panelGO);
-        return img;
     }
 
     // ── Character Mesh + AnimatorController ───────────────────────────────
@@ -157,8 +166,7 @@ public static class DiakonieCharacterSetup
         SetLayerRecursive(charGO, CharLayer);
 
         var controller = BuildAnimatorController();
-        var anim = charGO.GetComponentInChildren<Animator>();
-        if (anim == null) anim = charGO.AddComponent<Animator>();
+        var anim = charGO.GetComponentInChildren<Animator>() ?? charGO.AddComponent<Animator>();
         if (controller != null) anim.runtimeAnimatorController = controller;
 
         return charGO;
@@ -173,7 +181,7 @@ public static class DiakonieCharacterSetup
 
         if (clips.Length == 0)
         {
-            Debug.LogWarning("[CharacterSetup] Keine AnimationClips im GLB gefunden.");
+            Debug.LogWarning("[CharacterSetup] Keine AnimationClips im GLB.");
             return null;
         }
 
@@ -183,12 +191,8 @@ public static class DiakonieCharacterSetup
 
         var ctrl = AnimatorController.CreateAnimatorControllerAtPath(ControllerPath);
         var sm   = ctrl.layers[0].stateMachine;
-
         foreach (var clip in clips)
-        {
-            var state  = sm.AddState(clip.name);
-            state.motion = clip;
-        }
+            sm.AddState(clip.name).motion = clip;
 
         Debug.Log($"[CharacterSetup] AnimatorController mit {clips.Length} Clips erstellt.");
         return ctrl;

@@ -70,15 +70,35 @@ public static class DiakonieUISetup
             else Debug.LogWarning("[DiakonieUISetup] Transkript-Objekt nicht gefunden.");
         }
 
-        // ── 2. Upload-Button in BasicButtonsPanel ──────────────────────────
+        // ── 2. Upload-Button + LLM-Button in BasicButtonsPanel ───────────────
         var buttonsPanel = GameObject.Find("BasicButtonsPanel");
         Button uploadBtn = null;
+        Button llmBtn = null;
         if (buttonsPanel != null)
         {
-            uploadBtn = CreateButton("BtnUpload", "Audio laden", buttonsPanel.transform);
-            // Position after BtnStop
-            uploadBtn.transform.SetAsLastSibling();
-            Debug.Log("[DiakonieUISetup] BtnUpload hinzugefügt.");
+            // BtnUpload: nur anlegen falls nicht vorhanden
+            var existingUpload = buttonsPanel.transform.Find("BtnUpload");
+            if (existingUpload != null)
+                uploadBtn = existingUpload.GetComponent<Button>();
+            else
+            {
+                uploadBtn = CreateButton("BtnUpload", "↓ Audio laden", buttonsPanel.transform);
+                uploadBtn.transform.SetAsLastSibling();
+                Debug.Log("[DiakonieUISetup] BtnUpload hinzugefügt.");
+            }
+
+            // BtnLLM: nur anlegen falls nicht vorhanden
+            var existingLLM = buttonsPanel.transform.Find("BtnLLM");
+            if (existingLLM != null)
+                llmBtn = existingLLM.GetComponent<Button>();
+            else
+            {
+                llmBtn = CreateButton("BtnLLM", "LLM verarbeiten", buttonsPanel.transform);
+                // LLM-Button in dunkelviolett
+                llmBtn.GetComponent<UnityEngine.UI.Image>().color = new Color(0.35f, 0.1f, 0.5f, 1f);
+                llmBtn.transform.SetAsLastSibling();
+                Debug.Log("[DiakonieUISetup] BtnLLM hinzugefügt.");
+            }
         }
         else
         {
@@ -86,7 +106,8 @@ public static class DiakonieUISetup
         }
 
         // ── 3. PanelFilePath (Overlay-Panel für Pfad-Eingabe) ─────────────
-        var canvas = Object.FindFirstObjectByType<Canvas>();
+        var canvas = GameObject.Find("Canvas")?.GetComponent<Canvas>();
+        if (canvas == null) canvas = Object.FindFirstObjectByType<Canvas>();
         GameObject panelFilePath = null;
         TMP_InputField inputFilePath = null;
 
@@ -149,6 +170,9 @@ public static class DiakonieUISetup
 
         if (uploadBtn != null)
             careDocUI.btnUpload = uploadBtn;
+
+        if (llmBtn != null)
+            careDocUI.btnLLM = llmBtn;
 
         if (panelFilePath != null)
             careDocUI.panelFilePath = panelFilePath;
