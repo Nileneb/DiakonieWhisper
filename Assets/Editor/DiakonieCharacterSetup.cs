@@ -88,7 +88,8 @@ public static class DiakonieCharacterSetup
         camGO.transform.localPosition = new Vector3(0, 1.1f, -2.8f);
         camGO.transform.localRotation = Quaternion.identity;
 
-        var cam = camGO.GetComponent<Camera>() ?? camGO.AddComponent<Camera>();
+        var cam = camGO.GetComponent<Camera>();
+        if (cam == null) cam = camGO.AddComponent<Camera>();
         cam.clearFlags       = CameraClearFlags.SolidColor;
         cam.backgroundColor  = Color.clear;
         cam.cullingMask      = 1 << CharLayer;
