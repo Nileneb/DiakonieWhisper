@@ -40,27 +40,30 @@ public class ModelDownloader : MonoBehaviour
     }
 
     // ═══════════════════════════════════════════════
-    //  ORIGINALE ÖFFENTLICHE DOWNLOAD-URLS
+    //  PERMANENTE DOWNLOAD-URLS (NilEneb/DiakonieWhisper-models auf HuggingFace)
+    //  Generiert via tools/export_and_upload_models.py
     // ═══════════════════════════════════════════════
+    private const string HF_BASE = "https://huggingface.co/NilEneb/DiakonieWhisper-models/resolve/main/";
+
     private readonly ModelFile[] models = new ModelFile[]
     {
         // ── Whisper Small (multilingual, ~900 MB gesamt) ──
         new ModelFile
         {
             fileName = "small-encoder.onnx",
-            url = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small/resolve/main/small-encoder.onnx",
+            url = HF_BASE + "small-encoder.onnx",
             expectedSizeMB = 410
         },
         new ModelFile
         {
             fileName = "small-decoder.onnx",
-            url = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small/resolve/main/small-decoder.onnx",
+            url = HF_BASE + "small-decoder.onnx",
             expectedSizeMB = 559
         },
         new ModelFile
         {
             fileName = "small-tokens.txt",
-            url = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small/resolve/main/small-tokens.txt",
+            url = HF_BASE + "small-tokens.txt",
             expectedSizeMB = 1
         },
 
@@ -68,25 +71,23 @@ public class ModelDownloader : MonoBehaviour
         new ModelFile
         {
             fileName = "silero_vad.onnx",
-            url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx",
+            url = HF_BASE + "silero_vad.onnx",
             expectedSizeMB = 2
         },
 
-        // ── Speaker Segmentation – Pyannote 3.0 (tar.bz2 ~5 MB) ──
+        // ── Speaker Segmentation – Pyannote 3.0 (~5 MB) ──
         new ModelFile
         {
             fileName = "sherpa-onnx-pyannote-segmentation-3-0.onnx",
-            url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2",
-            expectedSizeMB = 5,
-            isTarBz2 = true,
-            archiveEntryPath = "sherpa-onnx-pyannote-segmentation-3-0/model.onnx"
+            url = HF_BASE + "sherpa-onnx-pyannote-segmentation-3-0.onnx",
+            expectedSizeMB = 5
         },
 
         // ── Speaker Embedding – 3D-Speaker (~25 MB) ──
         new ModelFile
         {
             fileName = "3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx",
-            url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx",
+            url = HF_BASE + "3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx",
             expectedSizeMB = 25
         },
     };

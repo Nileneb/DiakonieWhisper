@@ -2,6 +2,9 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+#if UNITY_STANDALONE
+using SFB;
+#endif
 
 namespace BergischeDiakonie.Speech
 {
@@ -18,12 +21,18 @@ namespace BergischeDiakonie.Speech
         public Button btnRecord;
         public Button btnStop;
         public TMP_Text txtStatus;
-        public TMP_Text txtTranscript;
+        public TMP_InputField inputTranscript;
         public Slider progressBar;
 
         [Header("Streaming Display")]
-        [Tooltip("Scroll rect containing the transcript text (optional)")]
+        [Tooltip("Scroll rect containing the transcript InputField (optional)")]
         public ScrollRect scrollRect;
+
+        [Header("Audio Upload")]
+        public Button btnUpload;
+        [Tooltip("Android fallback: panel with a path InputField + load button")]
+        public GameObject panelFilePath;
+        public TMP_InputField inputFilePath;
 
         [Header("Webhook Export")]
         public TMP_InputField inputWebhookUrl;
@@ -50,13 +59,16 @@ namespace BergischeDiakonie.Speech
                 try
                 {
                     manager.StartRecording();
-                    // Nur umschalten wenn StartRecording nicht geworfen hat
                     if (manager.audioCapture != null && manager.audioCapture.IsRecording)
                     {
                         btnRecord.interactable = false;
                         if (btnStop) btnStop.interactable = true;
                         if (btnExport) btnExport.interactable = false;
-                        if (txtTranscript) txtTranscript.text = "";
+                        if (inputTranscript)
+                        {
+                            inputTranscript.SetTextWithoutNotify("");
+                            inputTranscript.interactable = false;
+                        }
                         _llmOutput = "";
                         _llmStarted = false;
                     }
@@ -84,6 +96,9 @@ namespace BergischeDiakonie.Speech
                 });
             }
 
+            // ── Audio Upload ────────────────────────────────────
+            SetupUploadUI();
+
             // ── Webhook UI ──────────────────────────────────────
             SetupWebhookUI();
 
@@ -92,8 +107,8 @@ namespace BergischeDiakonie.Speech
 
             manager.OnTranscriptUpdate += t => _q.Enqueue(() =>
             {
-                if (!txtTranscript) return;
-                txtTranscript.text = t;
+                if (!inputTranscript) return;
+                inputTranscript.SetTextWithoutNotify(t);
                 if (scrollRect) scrollRect.verticalNormalizedPosition = 0f;
             });
 
@@ -101,14 +116,16 @@ namespace BergischeDiakonie.Speech
 
             manager.OnSpeakerLine += (s, t) => _q.Enqueue(() =>
             {
-                if (txtTranscript) txtTranscript.text += $"\n<b>{s}:</b> {t}";
+                if (!inputTranscript) return;
+                inputTranscript.SetTextWithoutNotify(inputTranscript.text + $"\n{s}: {t}");
+                if (scrollRect) scrollRect.verticalNormalizedPosition = 0f;
             });
 
             manager.OnProtocolSaved += p => _q.Enqueue(() =>
             {
                 if (txtStatus) txtStatus.text = $"Gespeichert: {System.IO.Path.GetFileName(p)}";
                 if (btnExport) btnExport.interactable = true;
-                // Reset LLM streaming buffer so the new protocol starts clean
+                if (inputTranscript) inputTranscript.interactable = true;
                 _llmOutput = "";
                 _llmStarted = false;
             });
@@ -133,14 +150,14 @@ namespace BergischeDiakonie.Speech
 
                 localDocService.OnPartialResult += token => _q.Enqueue(() =>
                 {
-                    if (!txtTranscript) return;
+                    if (!inputTranscript) return;
                     if (!_llmStarted)
                     {
                         _llmStarted = true;
                         _llmOutput = "── Strukturierte Dokumentation ──\n";
                     }
                     _llmOutput += token;
-                    txtTranscript.text = _llmOutput;
+                    inputTranscript.SetTextWithoutNotify(_llmOutput);
                     if (scrollRect) scrollRect.verticalNormalizedPosition = 0f;
                 });
 
@@ -155,6 +172,51 @@ namespace BergischeDiakonie.Speech
                     if (txtStatus) txtStatus.text = $"LLM-Fehler: {err}";
                 });
             }
+        }
+
+        // ── Upload setup ────────────────────────────────────────
+
+        void SetupUploadUI()
+        {
+            if (!btnUpload) return;
+
+            btnUpload.onClick.AddListener(() =>
+            {
+#if UNITY_STANDALONE
+                StandaloneFileBrowser.OpenFilePanelAsync(
+                    "Audio-Datei wählen", "",
+                    new[] { new ExtensionFilter("Audio", "wav") },
+                    false,
+                    paths =>
+                    {
+                        if (paths != null && paths.Length > 0 && !string.IsNullOrEmpty(paths[0]))
+                            manager.ProcessFile(paths[0]);
+                    });
+#else
+                // Android: zeige Fallback-Panel mit Pfad-Eingabe
+                if (panelFilePath) panelFilePath.SetActive(!panelFilePath.activeSelf);
+#endif
+            });
+
+            // Android fallback: "Laden"-Button im panelFilePath (optional)
+            if (inputFilePath)
+            {
+                // Ein zweiter Button im panelFilePath kann ProcessFile aufrufen.
+                // Verdrahtung im Inspector: Button.onClick → CareDocUI.LoadFromInputPath()
+            }
+        }
+
+        public void LoadFromInputPath()
+        {
+            if (!inputFilePath) return;
+            string path = inputFilePath.text.Trim();
+            if (string.IsNullOrEmpty(path))
+            {
+                if (txtStatus) txtStatus.text = "Bitte Dateipfad eingeben.";
+                return;
+            }
+            if (panelFilePath) panelFilePath.SetActive(false);
+            manager.ProcessFile(path);
         }
 
         // ── Webhook setup ───────────────────────────────────────
@@ -180,11 +242,15 @@ namespace BergischeDiakonie.Speech
                 });
             }
 
-            // Export button
+            // Export button — sends the currently displayed (possibly edited) text
             if (btnExport)
             {
-                btnExport.interactable = false; // enabled after first protocol
-                btnExport.onClick.AddListener(() => manager.ExportToWebhook());
+                btnExport.interactable = false;
+                btnExport.onClick.AddListener(() =>
+                {
+                    string text = inputTranscript ? inputTranscript.text : manager.LastProtocol;
+                    manager.ExportText(text);
+                });
             }
         }
 

@@ -128,6 +128,17 @@ namespace BergischeDiakonie.Speech
                 OnInitialized?.Invoke();
         }
 
+        /// <summary>Send an arbitrary text string to the webhook (e.g. user-edited transcript).</summary>
+        public void ExportText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                OnStatusMessage?.Invoke("Kein Text zum Senden vorhanden.");
+                return;
+            }
+            StartCoroutine(Webhook.Send(text));
+        }
+
         /// <summary>Send the newest protocol file to the configured Langdock webhook.</summary>
         public void ExportToWebhook()
         {
