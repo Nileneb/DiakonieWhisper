@@ -69,6 +69,13 @@ namespace BergischeDiakonie.Speech
         /// </summary>
         async Task InitRAGAsync()
         {
+            if (!IsEmbeddingsModelReady())
+            {
+                Debug.LogWarning("[LocalDocService] Kein Embeddings-Modell konfiguriert → RAG deaktiviert.");
+                OnStatusMessage?.Invoke("RAG deaktiviert (kein Embeddings-Modell).");
+                return;
+            }
+
             try
             {
                 OnStatusMessage?.Invoke("Lade Pflege-Wissensdatenbank...");
@@ -211,12 +218,25 @@ namespace BergischeDiakonie.Speech
             catch (Exception e)
             {
                 Debug.LogWarning($"[LocalDocService] RAG-Suche fehlgeschlagen: {e.Message}");
+                _ragLoaded = false;
                 return string.Empty;
             }
         }
 
+        bool IsEmbeddingsModelReady()
+        {
+            if (rag == null) return false;
+            var search = rag.GetComponent<SearchMethod>();
+            if (search == null) search = rag.GetComponentInChildren<SearchMethod>();
+            return search?.llmEmbedder?.llm?.embeddingsOnly == true;
+        }
+
         static string BuildPrompt(string rawProtocol, string ragContext)
         {
+            const int maxProtocolChars = 24000;
+            if (rawProtocol.Length > maxProtocolChars)
+                rawProtocol = rawProtocol.Substring(0, maxProtocolChars) + "\n[Protokoll gekürzt]";
+
             var sb = new StringBuilder();
             sb.AppendLine("Du bist ein Assistent für die Bergische Diakonie.");
             sb.AppendLine("Schreibe das folgende Pflegeprotokoll in eine strukturierte, professionelle Pflegedokumentation um.");

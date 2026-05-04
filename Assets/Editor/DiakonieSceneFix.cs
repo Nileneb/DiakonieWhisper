@@ -4,6 +4,7 @@ using UnityEditor.Events;
 using UnityEditor.SceneManagement;
 using UnityEngine.UI;
 using TMPro;
+using LLMUnity;
 using BergischeDiakonie.Speech;
 
 /// <summary>
@@ -152,7 +153,22 @@ public static class DiakonieSceneFix
             else { Debug.LogWarning("[SceneFix] BtnLLM nicht gefunden — erst 'Diakonie > Setup UI' ausführen."); }
         }
 
-        // ── 7. Szene speichern ────────────────────────────────────────────────
+        // ── 7. LLM contextSize auf 8192 setzen ───────────────────────────────
+        var localLLM = GameObject.Find("LocalLLM");
+        if (localLLM != null)
+        {
+            var llm = localLLM.GetComponent<LLM>();
+            if (llm != null)
+            {
+                llm.contextSize = 8192;
+                EditorUtility.SetDirty(llm);
+                Debug.Log("[SceneFix] LLM.contextSize = 8192");
+            }
+            else { Debug.LogWarning("[SceneFix] LLM-Komponente auf LocalLLM nicht gefunden."); }
+        }
+        else { Debug.LogWarning("[SceneFix] LocalLLM GameObject nicht gefunden."); }
+
+        // ── 8. Szene speichern ────────────────────────────────────────────────
         EditorUtility.SetDirty(careDocUI);
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene, "Assets/Scenes/Main.unity");
