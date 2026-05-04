@@ -9,8 +9,8 @@ HuggingFace under NilEneb/DiakonieWhisper-models.
 Run once. Duration: ~30-90 min depending on hardware and network.
 
 Prerequisites:
-    pip install openai-whisper onnx onnxruntime huggingface_hub requests tqdm
-    huggingface-cli login   # or export HF_TOKEN=hf_...
+    pip install openai-whisper onnx onnxruntime onnxscript huggingface_hub requests tqdm
+    hf login   # Token mit Write-Rechten — oder HF_TOKEN env var setzen
 """
 
 import os
@@ -23,6 +23,19 @@ import io
 import tempfile
 import glob
 from pathlib import Path
+
+# ── Dependency pre-check ────────────────────────────────────────────────────
+_MISSING = []
+for _mod in ("requests", "tqdm", "huggingface_hub", "onnx", "onnxruntime", "onnxscript"):
+    try:
+        __import__(_mod)
+    except ImportError:
+        _MISSING.append(_mod)
+if _MISSING:
+    sys.exit(
+        f"Fehlende Pakete: {', '.join(_MISSING)}\n"
+        f"Bitte installieren:\n  pip install {' '.join(_MISSING)}"
+    )
 
 import requests
 from tqdm import tqdm
