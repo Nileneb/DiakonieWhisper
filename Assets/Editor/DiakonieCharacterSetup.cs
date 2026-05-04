@@ -43,9 +43,9 @@ public static class DiakonieCharacterSetup
         var stage = GameObject.Find("CharacterStage") ?? new GameObject("CharacterStage");
         stage.transform.position = new Vector3(1000, 0, 0);
 
-        SetupCharacterCamera(stage, rt);
+        var rawImg = SetupUI(rt);
+        SetupCharacterCamera(stage, rt, rawImg);
         var charGO = SetupCharacterMesh(stage);
-        SetupUI(rt);
 
         if (charGO != null)
         {
@@ -80,12 +80,12 @@ public static class DiakonieCharacterSetup
 
     // ── CharacterCamera ───────────────────────────────────────────────────
 
-    static void SetupCharacterCamera(GameObject stage, RenderTexture rt)
+    static void SetupCharacterCamera(GameObject stage, RenderTexture rt, RawImage rawImg)
     {
         var existing = stage.transform.Find("CharacterCamera");
         var camGO = existing != null ? existing.gameObject : new GameObject("CharacterCamera");
         camGO.transform.SetParent(stage.transform, false);
-        camGO.transform.localPosition = new Vector3(0, 110f, -280f); // skaliert mit Char x100
+        camGO.transform.localPosition = new Vector3(0, 110f, -280f);
         camGO.transform.localRotation = Quaternion.identity;
 
         var cam = camGO.GetComponent<Camera>();
@@ -93,7 +93,7 @@ public static class DiakonieCharacterSetup
         cam.clearFlags       = CameraClearFlags.SolidColor;
         cam.backgroundColor  = Color.clear;
         cam.cullingMask      = 1 << CharLayer;
-        cam.targetTexture    = null; // CharacterView setzt RT zur Laufzeit
+        cam.targetTexture    = null; // CharacterView setzt RT bei Awake
         cam.depth            = 0;
         cam.fieldOfView      = 38f;
         cam.nearClipPlane    = 1f;
@@ -102,9 +102,10 @@ public static class DiakonieCharacterSetup
         cam.allowMSAA        = false;
         EditorUtility.SetDirty(cam);
 
-        // CharacterView erstellt RT bei Awake und weist es Camera + RawImage zu
+        // Direkte Referenz setzen — kein Find() zur Laufzeit nötig
         var view = camGO.GetComponent<CharacterView>();
         if (view == null) view = camGO.AddComponent<CharacterView>();
+        view.targetImage = rawImg;
         EditorUtility.SetDirty(view);
     }
 
@@ -172,12 +173,11 @@ public static class DiakonieCharacterSetup
 
     // ── UI RawImage ───────────────────────────────────────────────────────
 
-    static void SetupUI(RenderTexture rt)
+    static RawImage SetupUI(RenderTexture rt)
     {
         var canvas = Object.FindFirstObjectByType<Canvas>();
-        if (canvas == null) { Debug.LogError("[CharacterSetup] Canvas nicht gefunden."); return; }
+        if (canvas == null) { Debug.LogError("[CharacterSetup] Canvas nicht gefunden."); return null; }
 
-        // Vorhandenes Panel entfernen
         var old = canvas.transform.Find("CharacterPanel");
         if (old != null) Object.DestroyImmediate(old.gameObject);
 
@@ -185,18 +185,18 @@ public static class DiakonieCharacterSetup
         panelGO.transform.SetParent(canvas.transform, false);
 
         var img = panelGO.AddComponent<RawImage>();
-        img.texture = rt;
+        img.texture = rt;   // Placeholder; CharacterView überschreibt mit neuem RT
         img.color   = Color.white;
 
-        // Rechte untere Ecke
         var rect = panelGO.GetComponent<RectTransform>();
-        rect.anchorMin      = new Vector2(1, 0);
-        rect.anchorMax      = new Vector2(1, 0);
-        rect.pivot          = new Vector2(1, 0);
+        rect.anchorMin        = new Vector2(1, 0);
+        rect.anchorMax        = new Vector2(1, 0);
+        rect.pivot            = new Vector2(1, 0);
         rect.anchoredPosition = new Vector2(-12, 12);
-        rect.sizeDelta      = new Vector2(200, 320);
+        rect.sizeDelta        = new Vector2(200, 320);
 
         EditorUtility.SetDirty(panelGO);
+        return img;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
