@@ -42,14 +42,14 @@ OUTPUT_DIR = SCRIPT_DIR / "models_output"
 
 WHISPER_ARCHIVE_URL = (
     "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
-    "sherpa-onnx-whisper-small.tar.bz2"
+    "sherpa-onnx-whisper-medium.tar.bz2"
 )
 
 # Final filenames must match ModelDownloader.cs exactly
 WHISPER_FILES = {
-    "small-encoder.onnx",
-    "small-decoder.onnx",
-    "small-tokens.txt",
+    "medium-encoder.onnx",
+    "medium-decoder.onnx",
+    "medium-tokens.txt",
 }
 
 DIRECT_DOWNLOAD_URLS = {
@@ -118,10 +118,10 @@ def download_whisper():
     print("\n=== Step 1: Download pre-built sherpa-onnx-whisper-small ===")
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    archive = OUTPUT_DIR / "sherpa-onnx-whisper-small.tar.bz2"
+    archive = OUTPUT_DIR / "sherpa-onnx-whisper-medium.tar.bz2"
     if not archive.exists():
         print(f"  Downloading from GitHub releases...")
-        download(WHISPER_ARCHIVE_URL, archive, desc="whisper-small archive")
+        download(WHISPER_ARCHIVE_URL, archive, desc="whisper-medium archive")
     else:
         print(f"  Archive already present: {archive.name}")
 
@@ -148,9 +148,9 @@ def download_whisper():
     if not tokens_suffix:
         raise FileNotFoundError("No tokens.txt found in archive")
 
-    extract_entry(archive, encoder_suffix, OUTPUT_DIR / "small-encoder.onnx")
-    extract_entry(archive, decoder_suffix, OUTPUT_DIR / "small-decoder.onnx")
-    extract_entry(archive, tokens_suffix,  OUTPUT_DIR / "small-tokens.txt")
+    extract_entry(archive, encoder_suffix, OUTPUT_DIR / "medium-encoder.onnx")
+    extract_entry(archive, decoder_suffix, OUTPUT_DIR / "medium-decoder.onnx")
+    extract_entry(archive, tokens_suffix,  OUTPUT_DIR / "medium-tokens.txt")
 
     archive.unlink()
     print("  Whisper models ready.")
@@ -195,9 +195,9 @@ def upload_to_huggingface():
         sys.exit(f"ERROR creating repo: {e}")
 
     expected = [
-        "small-encoder.onnx",
-        "small-decoder.onnx",
-        "small-tokens.txt",
+        "medium-encoder.onnx",
+        "medium-decoder.onnx",
+        "medium-tokens.txt",
         "silero_vad.onnx",
         PYANNOTE_DEST_NAME,
         "3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx",
@@ -226,9 +226,9 @@ def upload_to_huggingface():
 def verify() -> bool:
     print("\n=== Verification ===")
     expected = [
-        "small-encoder.onnx",
-        "small-decoder.onnx",
-        "small-tokens.txt",
+        "medium-encoder.onnx",
+        "medium-decoder.onnx",
+        "medium-tokens.txt",
         "silero_vad.onnx",
         PYANNOTE_DEST_NAME,
         "3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx",
