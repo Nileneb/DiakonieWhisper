@@ -50,9 +50,9 @@ public static class DiakonieUIRefactor
         var manager = Object.FindFirstObjectByType<CareDocumentationManager>();
         if (manager != null)
         {
-            manager.whisperEncoder = "medium-encoder.onnx";
-            manager.whisperDecoder = "medium-decoder.onnx";
-            manager.whisperTokens  = "medium-tokens.txt";
+            manager.whisperEncoder = "small-encoder.onnx";
+            manager.whisperDecoder = "small-decoder.onnx";
+            manager.whisperTokens  = "small-tokens.txt";
             EditorUtility.SetDirty(manager);
             Debug.Log("[DiakonieUIRefactor] Whisper-medium Modellnamen gesetzt.");
         }

@@ -47,23 +47,23 @@ public class ModelDownloader : MonoBehaviour
 
     private readonly ModelFile[] models = new ModelFile[]
     {
-        // ── Whisper Medium (multilingual, deutsch-optimiert, ~1.5 GB gesamt) ──
+        // ── Whisper Small (multilingual, ~900 MB gesamt) ──
         new ModelFile
         {
-            fileName = "medium-encoder.onnx",
-            url = HF_BASE + "medium-encoder.onnx",
-            expectedSizeMB = 764
+            fileName = "small-encoder.onnx",
+            url = HF_BASE + "small-encoder.onnx",
+            expectedSizeMB = 410
         },
         new ModelFile
         {
-            fileName = "medium-decoder.onnx",
-            url = HF_BASE + "medium-decoder.onnx",
-            expectedSizeMB = 736
+            fileName = "small-decoder.onnx",
+            url = HF_BASE + "small-decoder.onnx",
+            expectedSizeMB = 559
         },
         new ModelFile
         {
-            fileName = "medium-tokens.txt",
-            url = HF_BASE + "medium-tokens.txt",
+            fileName = "small-tokens.txt",
+            url = HF_BASE + "small-tokens.txt",
             expectedSizeMB = 1
         },
 

@@ -22,9 +22,9 @@ namespace BergischeDiakonie.Speech
 
         [Header("Model File Names (flat, in ModelDownloader.ModelDirectory)")]
         public string vadModel = "silero_vad.onnx";
-        public string whisperEncoder = "medium-encoder.onnx";
-        public string whisperDecoder = "medium-decoder.onnx";
-        public string whisperTokens = "medium-tokens.txt";
+        public string whisperEncoder = "small-encoder.onnx";
+        public string whisperDecoder = "small-decoder.onnx";
+        public string whisperTokens = "small-tokens.txt";
         public string segmentationModel = "sherpa-onnx-pyannote-segmentation-3-0.onnx";
         public string embeddingModel = "3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx";
 
