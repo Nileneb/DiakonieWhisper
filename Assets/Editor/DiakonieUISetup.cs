@@ -200,7 +200,7 @@ public static class DiakonieUISetup
         phText.text = "";
         phText.color = new Color(0.5f, 0.5f, 0.5f, 0.7f);
         phText.fontSize = 16;
-        phText.enableWordWrapping = true;
+        phText.textWrappingMode = TextWrappingModes.Normal;
 
         // Text
         var textGO = new GameObject("Text");
@@ -213,7 +213,7 @@ public static class DiakonieUISetup
         var textComp = textGO.AddComponent<TextMeshProUGUI>();
         textComp.color = Color.white;
         textComp.fontSize = 16;
-        textComp.enableWordWrapping = true;
+        textComp.textWrappingMode = TextWrappingModes.Normal;
 
         // Wire InputField
         field.textViewport = textAreaRT;
