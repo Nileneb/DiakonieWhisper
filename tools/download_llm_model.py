@@ -19,6 +19,12 @@ import sys
 from pathlib import Path
 
 MODELS = {
+    "nomic-embed": {
+        "repo": "nomic-ai/nomic-embed-text-v1.5-GGUF",
+        "file": "nomic-embed-text-v1.5.Q4_K_M.gguf",
+        "size_mb": 83,
+        "description": "nomic-embed-text v1.5 Q4_K_M — dediziertes Embedding-Modell, ~83MB, für RAG",
+    },
     "qwen2.5-1.5b": {
         "repo": "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
         "file": "qwen2.5-1.5b-instruct-q4_k_m.gguf",

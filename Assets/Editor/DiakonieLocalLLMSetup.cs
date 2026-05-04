@@ -33,16 +33,32 @@ public static class DiakonieLocalLLMSetup
         }
 
         // ── 2. LLM (Chat-Modell) ──────────────────────────────────────────
-        var llm = existing.GetComponent<LLM>() ?? existing.AddComponent<LLM>();
+        // Mehrere LLM-Komponenten auf demselben GO werden anhand des Typs unterschieden.
+        // Wir nutzen GetComponents<LLM>() um Chat- vs. Embedding-LLM zu trennen.
+        var allLlms = existing.GetComponents<LLM>();
+        LLM llm = allLlms.Length > 0 ? allLlms[0] : existing.AddComponent<LLM>();
         llm.dontDestroyOnLoad = false;
         llm.numThreads = 4;
-        llm.numGPULayers = 0;   // 0 = CPU-only; auf GPU-Rechnern erhöhen (z.B. 99)
+        llm.numGPULayers = 0;
         llm.contextSize = 4096;
         llm.batchSize = 512;
         EditorUtility.SetDirty(llm);
-        Debug.Log("[LocalLLMSetup] LLM-Komponente konfiguriert. Bitte GGUF-Modell im Inspector setzen.");
+        Debug.Log("[LocalLLMSetup] Chat-LLM konfiguriert. Bitte GGUF-Chat-Modell im Inspector setzen.");
 
-        // ── 3. LLMAgent (Chat-Interface) ─────────────────────────────────
+        // ── 3. LLM (Embedding-Modell) ─────────────────────────────────────
+        // Separates LLM für RAG-Embeddings — vermeidet LLMEmbedder-Warning.
+        // Empfohlen: nomic-embed-text-v1.5.Q4_K_M.gguf (~83 MB)
+        // Download: python tools/download_llm_model.py --model nomic-embed
+        LLM llmEmbed = allLlms.Length > 1 ? allLlms[1] : existing.AddComponent<LLM>();
+        llmEmbed.dontDestroyOnLoad = false;
+        llmEmbed.numThreads = 2;
+        llmEmbed.numGPULayers = 0;
+        llmEmbed.contextSize = 512;
+        llmEmbed.batchSize = 512;
+        EditorUtility.SetDirty(llmEmbed);
+        Debug.Log("[LocalLLMSetup] Embedding-LLM konfiguriert. Bitte nomic-embed GGUF im Inspector setzen.");
+
+        // ── 4. LLMAgent (Chat-Interface) ─────────────────────────────────
         var agent = existing.GetComponent<LLMAgent>() ?? existing.AddComponent<LLMAgent>();
         agent.llm = llm;
         agent.systemPrompt =
@@ -51,13 +67,13 @@ public static class DiakonieLocalLLMSetup
             "Antworte ausschließlich auf Deutsch. Erfinde keine Informationen.";
         EditorUtility.SetDirty(agent);
 
-        // ── 4. RAG (Wissens-Retrieval) ────────────────────────────────────
+        // ── 5. RAG (Wissens-Retrieval) ────────────────────────────────────
         var rag = existing.GetComponent<RAG>() ?? existing.AddComponent<RAG>();
-        rag.Init(SearchMethods.SimpleSearch, ChunkingMethods.NoChunking, llm);
+        rag.Init(SearchMethods.DBSearch, ChunkingMethods.SentenceSplitter, llmEmbed);
         EditorUtility.SetDirty(rag);
-        Debug.Log("[LocalLLMSetup] RAG-Komponente konfiguriert.");
+        Debug.Log("[LocalLLMSetup] RAG mit dediziertem Embedding-LLM konfiguriert.");
 
-        // ── 5. LocalDocumentationService ────────────────────────────────
+        // ── 6. LocalDocumentationService ────────────────────────────────
         var docService = existing.GetComponent<LocalDocumentationService>()
             ?? existing.AddComponent<LocalDocumentationService>();
         docService.llmAgent = agent;
@@ -67,7 +83,7 @@ public static class DiakonieLocalLLMSetup
         EditorUtility.SetDirty(docService);
         Debug.Log("[LocalLLMSetup] LocalDocumentationService verdrahtet.");
 
-        // ── 6. CareDocUI + CareDocumentationManager verdrahten ──────────
+        // ── 7. CareDocUI + CareDocumentationManager verdrahten ──────────
         var careDocUI = Object.FindFirstObjectByType<CareDocUI>();
         if (careDocUI != null)
         {
@@ -86,11 +102,14 @@ public static class DiakonieLocalLLMSetup
         }
         else Debug.LogWarning("[LocalLLMSetup] CareDocumentationManager nicht gefunden.");
 
-        // ── 7. Szene speichern ────────────────────────────────────────────
+        // ── 8. Szene speichern ────────────────────────────────────────────
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene, "Assets/Scenes/Main.unity");
         Debug.Log("[LocalLLMSetup] ✓ Setup abgeschlossen.\n" +
-                  "Nächster Schritt: Im Inspector von 'LocalLLM' → LLM-Komponente die GGUF-Datei setzen.\n" +
-                  "Empfehlung: tools/download_llm_model.py ausführen für Qwen2.5-1.5B-Q4.");
+                  "Nächste Schritte:\n" +
+                  "  1. python tools/download_llm_model.py              (Qwen2.5-1.5B Chat, ~1GB)\n" +
+                  "  2. python tools/download_llm_model.py --model nomic-embed  (Embedding, ~83MB)\n" +
+                  "  3. LocalLLM → LLM[0] (Chat): GGUF-Pfad setzen\n" +
+                  "  4. LocalLLM → LLM[1] (Embed): nomic-embed GGUF-Pfad setzen");
     }
 }
