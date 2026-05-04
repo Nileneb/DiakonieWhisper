@@ -155,7 +155,7 @@ namespace BergischeDiakonie.Speech
 
                 // Start each protocol with a clean context so previous sessions
                 // do not bleed into the current documentation.
-                llmAgent.ClearHistory();
+                await llmAgent.ClearHistory();
 
                 string fullResult = await llmAgent.Chat(
                     prompt,

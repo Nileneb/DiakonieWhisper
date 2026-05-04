@@ -53,7 +53,8 @@ public static class DiakonieUIRefactor
         GameObject keepPanel = null;
         foreach (var go in allPanels)
         {
-            if (go.name == "PanelFilePath" && go.transform.parent?.name == "Canvas")
+            if (go == null) continue; // destroyed in previous iteration
+            if (go.name == "PanelFilePath" && go.transform.parent != null && go.transform.parent.name == "Canvas")
             {
                 if (panelCount == 0) { keepPanel = go; panelCount++; }
                 else { Object.DestroyImmediate(go); Debug.Log("[DiakonieUIRefactor] Doppeltes PanelFilePath entfernt."); }

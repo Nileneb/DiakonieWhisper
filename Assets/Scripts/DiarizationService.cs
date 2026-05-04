@@ -20,8 +20,6 @@ namespace BergischeDiakonie.Speech
             public float EndSec;
         }
 
-        public event Action<float> OnProgress; // 0..1
-
         readonly OfflineSpeakerDiarization _diarizer;
         readonly Dictionary<int, string> _speakerNames = new Dictionary<int, string>();
 

@@ -221,7 +221,7 @@ namespace BergischeDiakonie.Speech
                 _diarizer = new DiarizationService(
                     MP(segmentationModel), MP(embeddingModel),
                     minSpeakers, maxSpeakers, clusteringThreshold, numThreads);
-                _diarizer.OnProgress += p => OnDiarizationProgress?.Invoke(p);
+
 
                 _ready = true;
                 OnStatusMessage?.Invoke("Bereit.");
@@ -270,7 +270,7 @@ namespace BergischeDiakonie.Speech
             OnStatusMessage?.Invoke($"Aufnahme beendet ({dur:F1}s, {segs} Segmente). Sprechererkennung...");
 
             // Diarization only — ASR already done live
-            FinalizeAsync(_buffer.ToArray());
+            FinalizeAsync(_buffer.ToArray()).Forget();
         }
 
         /// <summary>
@@ -378,7 +378,7 @@ namespace BergischeDiakonie.Speech
         {
             if (!_ready) Initialize();
             OnStatusMessage?.Invoke($"Lade: {Path.GetFileName(wavPath)}");
-            BatchProcessAsync(audioCapture.LoadWavFile(wavPath));
+            BatchProcessAsync(audioCapture.LoadWavFile(wavPath)).Forget();
         }
 
         async UniTaskVoid BatchProcessAsync(float[] samples)
