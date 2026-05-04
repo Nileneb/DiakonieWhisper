@@ -2,31 +2,27 @@
 """
 DiakonieWhisper Model Setup
 
-Exports whisper-small to sherpa-onnx ONNX format, downloads auxiliary models
-(VAD, pyannote segmentation, 3D-Speaker), and uploads all 6 files to
-HuggingFace under NilEneb/DiakonieWhisper-models.
+Downloads pre-built sherpa-onnx ONNX models from GitHub releases and uploads
+all 6 files to HuggingFace under NilEneb/DiakonieWhisper-models.
 
-Run once. Duration: ~30-90 min depending on hardware and network.
+No PyTorch / ONNX export required — uses official pre-built binaries.
+
+Run once. Duration: ~5-20 min depending on network speed.
 
 Prerequisites:
-    pip install openai-whisper onnx onnxruntime onnxscript huggingface_hub requests tqdm
-    hf login   # Token mit Write-Rechten — oder HF_TOKEN env var setzen
+    pip install huggingface_hub requests tqdm
+    hf login   # Token mit Write-Rechten hinterlegen
 """
 
-import os
 import sys
-import subprocess
-import shutil
-import tarfile
 import bz2
 import io
-import tempfile
-import glob
+import tarfile
 from pathlib import Path
 
 # ── Dependency pre-check ────────────────────────────────────────────────────
 _MISSING = []
-for _mod in ("requests", "tqdm", "huggingface_hub", "onnx", "onnxruntime", "onnxscript"):
+for _mod in ("requests", "tqdm", "huggingface_hub"):
     try:
         __import__(_mod)
     except ImportError:
@@ -43,7 +39,11 @@ from tqdm import tqdm
 HF_REPO_ID = "NilEneb/DiakonieWhisper-models"
 SCRIPT_DIR = Path(__file__).parent
 OUTPUT_DIR = SCRIPT_DIR / "models_output"
-SHERPA_TOOLS_DIR = Path(tempfile.gettempdir()) / "sherpa-onnx-tools"
+
+WHISPER_ARCHIVE_URL = (
+    "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
+    "sherpa-onnx-whisper-small.tar.bz2"
+)
 
 # Final filenames must match ModelDownloader.cs exactly
 WHISPER_FILES = {
@@ -70,12 +70,7 @@ PYANNOTE_DEST_NAME = "sherpa-onnx-pyannote-segmentation-3-0.onnx"
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
-def run(cmd, **kwargs):
-    print(f"  $ {' '.join(str(c) for c in cmd)}")
-    subprocess.run(cmd, check=True, **kwargs)
-
-
-def download(url: str, dest: Path, desc: str = ""):
+def download(url: str, dest: Path, desc: str = "") -> Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
     r = requests.get(url, stream=True, timeout=600)
     r.raise_for_status()
@@ -86,77 +81,79 @@ def download(url: str, dest: Path, desc: str = ""):
         for chunk in r.iter_content(chunk_size=1 << 20):
             f.write(chunk)
             bar.update(len(chunk))
+    return dest
 
 
-def extract_from_tarbz2(archive_path: Path, entry_path: str, dest: Path):
-    print(f"  extracting {entry_path} from {archive_path.name}...")
+def extract_entry(archive_path: Path, entry_suffix: str, dest: Path):
+    """Extract the first tar entry whose name ends with entry_suffix."""
+    print(f"  extracting *{entry_suffix} → {dest.name}...")
     with open(archive_path, "rb") as fh:
-        data = fh.read()
-    with bz2.open(io.BytesIO(data)) as bz2_stream:
-        with tarfile.open(fileobj=bz2_stream) as tar:
-            normalized = entry_path.replace("\\", "/").rstrip("/")
+        raw = fh.read()
+    with bz2.open(io.BytesIO(raw)) as bz:
+        with tarfile.open(fileobj=bz) as tar:
             for member in tar.getmembers():
-                name = member.name.replace("\\", "/").rstrip("/")
-                if name.lower() == normalized.lower():
-                    f = tar.extractfile(member)
-                    if f is None:
-                        raise RuntimeError(f"Cannot read {member.name} from archive")
-                    dest.write_bytes(f.read())
-                    print(f"  -> extracted {dest.name} ({dest.stat().st_size:,} bytes)")
+                name = member.name.replace("\\", "/")
+                if name.endswith(entry_suffix) and not member.isdir():
+                    fobj = tar.extractfile(member)
+                    if fobj is None:
+                        continue
+                    dest.write_bytes(fobj.read())
+                    print(f"  -> {dest.name} ({dest.stat().st_size:,} bytes)")
                     return
-    raise FileNotFoundError(f"Entry '{entry_path}' not found in archive")
+    raise FileNotFoundError(f"No entry ending with '{entry_suffix}' in {archive_path.name}")
 
 
-# ── Step 1: Export Whisper-small → ONNX ───────────────────────────────────
-
-def export_whisper():
-    print("\n=== Step 1: Export whisper-small to ONNX ===")
-
-    # Sparse-clone just the whisper export scripts
-    if SHERPA_TOOLS_DIR.exists():
-        shutil.rmtree(SHERPA_TOOLS_DIR)
-
-    run(["git", "clone", "--depth", "1", "--filter=blob:none", "--sparse",
-         "https://github.com/k2-fsa/sherpa-onnx.git", str(SHERPA_TOOLS_DIR)])
-    run(["git", "sparse-checkout", "set", "scripts/whisper"],
-        cwd=SHERPA_TOOLS_DIR)
-
-    export_script = SHERPA_TOOLS_DIR / "scripts" / "whisper" / "export-onnx.py"
-    if not export_script.exists():
-        raise FileNotFoundError(f"Export script not found: {export_script}")
-
-    export_cwd = OUTPUT_DIR / "whisper_export"
-    export_cwd.mkdir(parents=True, exist_ok=True)
-
-    run([sys.executable, str(export_script), "--model", "small"], cwd=export_cwd)
-
-    # Locate generated files — naming varies by sherpa-onnx version
-    encoder = _find_file(export_cwd, "*encoder*.onnx", "*encoder.onnx")
-    decoder = _find_file(export_cwd, "*decoder*.onnx", "*decoder.onnx")
-    tokens  = _find_file(export_cwd, "tokens.txt", "multilingual.txt", "small-tokens.txt")
-
-    if not encoder:
-        raise FileNotFoundError("Encoder ONNX not found after export")
-    if not decoder:
-        raise FileNotFoundError("Decoder ONNX not found after export")
-    if not tokens:
-        raise FileNotFoundError("Tokens file not found after export")
-
-    shutil.copy2(encoder, OUTPUT_DIR / "small-encoder.onnx")
-    shutil.copy2(decoder, OUTPUT_DIR / "small-decoder.onnx")
-    shutil.copy2(tokens,  OUTPUT_DIR / "small-tokens.txt")
-    print(f"  Whisper files ready:\n"
-          f"    small-encoder.onnx ({(OUTPUT_DIR / 'small-encoder.onnx').stat().st_size:,} bytes)\n"
-          f"    small-decoder.onnx ({(OUTPUT_DIR / 'small-decoder.onnx').stat().st_size:,} bytes)\n"
-          f"    small-tokens.txt   ({(OUTPUT_DIR / 'small-tokens.txt').stat().st_size:,} bytes)")
+def list_archive(archive_path: Path) -> list[str]:
+    """Return all non-directory entry names in a tar.bz2."""
+    with open(archive_path, "rb") as fh:
+        raw = fh.read()
+    with bz2.open(io.BytesIO(raw)) as bz:
+        with tarfile.open(fileobj=bz) as tar:
+            return [m.name for m in tar.getmembers() if not m.isdir()]
 
 
-def _find_file(base: Path, *patterns: str) -> Path | None:
-    for pattern in patterns:
-        matches = list(base.rglob(pattern))
-        if matches:
-            return matches[0]
-    return None
+# ── Step 1: Download pre-built Whisper-small ──────────────────────────────
+
+def download_whisper():
+    print("\n=== Step 1: Download pre-built sherpa-onnx-whisper-small ===")
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    archive = OUTPUT_DIR / "sherpa-onnx-whisper-small.tar.bz2"
+    if not archive.exists():
+        print(f"  Downloading from GitHub releases...")
+        download(WHISPER_ARCHIVE_URL, archive, desc="whisper-small archive")
+    else:
+        print(f"  Archive already present: {archive.name}")
+
+    print("  Archive contents:")
+    entries = list_archive(archive)
+    for e in entries:
+        print(f"    {e}")
+
+    # Extract encoder — looks for *encoder*.onnx or *encoder.onnx
+    encoder_suffix = next(
+        (e for e in entries if "encoder" in e.lower() and e.endswith(".onnx")), None
+    )
+    decoder_suffix = next(
+        (e for e in entries if "decoder" in e.lower() and e.endswith(".onnx")), None
+    )
+    tokens_suffix = next(
+        (e for e in entries if e.endswith("tokens.txt")), None
+    )
+
+    if not encoder_suffix:
+        raise FileNotFoundError("No encoder ONNX found in archive")
+    if not decoder_suffix:
+        raise FileNotFoundError("No decoder ONNX found in archive")
+    if not tokens_suffix:
+        raise FileNotFoundError("No tokens.txt found in archive")
+
+    extract_entry(archive, encoder_suffix, OUTPUT_DIR / "small-encoder.onnx")
+    extract_entry(archive, decoder_suffix, OUTPUT_DIR / "small-decoder.onnx")
+    extract_entry(archive, tokens_suffix,  OUTPUT_DIR / "small-tokens.txt")
+
+    archive.unlink()
+    print("  Whisper models ready.")
 
 
 # ── Step 2: Download auxiliary models ──────────────────────────────────────
@@ -173,7 +170,6 @@ def download_aux_models():
         print(f"  Downloading {name}...")
         download(url, dest, desc=name)
 
-    # Pyannote via tar.bz2
     pyannote_dest = OUTPUT_DIR / PYANNOTE_DEST_NAME
     if pyannote_dest.exists():
         print(f"  {PYANNOTE_DEST_NAME} already present, skipping")
@@ -181,7 +177,7 @@ def download_aux_models():
         archive_path = OUTPUT_DIR / "pyannote.tar.bz2"
         print("  Downloading pyannote segmentation archive...")
         download(PYANNOTE_ARCHIVE_URL, archive_path, desc="pyannote archive")
-        extract_from_tarbz2(archive_path, PYANNOTE_ARCHIVE_ENTRY, pyannote_dest)
+        extract_entry(archive_path, "model.onnx", pyannote_dest)
         archive_path.unlink()
 
 
@@ -189,14 +185,9 @@ def download_aux_models():
 
 def upload_to_huggingface():
     print(f"\n=== Step 3: Upload to HuggingFace ({HF_REPO_ID}) ===")
-    try:
-        from huggingface_hub import HfApi, create_repo
-    except ImportError:
-        sys.exit("ERROR: pip install huggingface_hub")
+    from huggingface_hub import HfApi, create_repo
 
     api = HfApi()
-
-    # Create repo if missing (public, model type)
     try:
         create_repo(HF_REPO_ID, repo_type="model", private=False, exist_ok=True)
         print(f"  Repo {HF_REPO_ID} ready")
@@ -215,7 +206,7 @@ def upload_to_huggingface():
     for fname in expected:
         local = OUTPUT_DIR / fname
         if not local.exists():
-            print(f"  WARNING: {fname} not found in {OUTPUT_DIR}, skipping upload")
+            print(f"  WARNING: {fname} not found, skipping")
             continue
         size_mb = local.stat().st_size / 1024 / 1024
         print(f"  Uploading {fname} ({size_mb:.1f} MB)...")
@@ -227,12 +218,12 @@ def upload_to_huggingface():
         )
         print(f"  ✓ {fname}")
 
-    print(f"\n  All files uploaded to https://huggingface.co/{HF_REPO_ID}")
+    print(f"\n  All files at https://huggingface.co/{HF_REPO_ID}")
 
 
 # ── Verification ────────────────────────────────────────────────────────────
 
-def verify():
+def verify() -> bool:
     print("\n=== Verification ===")
     expected = [
         "small-encoder.onnx",
@@ -261,22 +252,19 @@ def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     whisper_ready = all((OUTPUT_DIR / f).exists() for f in WHISPER_FILES)
-
     if whisper_ready:
-        print("\nWhisper ONNX files already present — skipping export step")
+        print("\nWhisper ONNX files already present — skipping download")
     else:
-        export_whisper()
+        download_whisper()
 
     download_aux_models()
 
     if not verify():
-        sys.exit("ERROR: Not all model files were generated. Check logs above.")
+        sys.exit("ERROR: Not all model files present. Check logs above.")
 
     upload_to_huggingface()
 
     print("\n=== Setup complete ===")
-    print(f"Update ModelDownloader.cs to use:")
-    print(f"  https://huggingface.co/{HF_REPO_ID}/resolve/main/<filename>")
 
 
 if __name__ == "__main__":
