@@ -1,3 +1,4 @@
+using System.IO;
 using UnityEngine;
 using UnityEditor;
 using LLMUnity;
@@ -6,10 +7,16 @@ using UnityEditor.SceneManagement;
 
 /// <summary>
 /// Diakonie > Setup Local LLM — richtet die komplette LLM+RAG-Pipeline ein.
-/// Danach im Inspector des "LocalLLM" GameObjects die GGUF-Modelldatei setzen.
+/// Sucht GGUF-Dateien automatisch in tools/models_output/llm/ und setzt sie.
 /// </summary>
 public static class DiakonieLocalLLMSetup
 {
+    static readonly string ModelsDir = Path.Combine(
+        Application.dataPath.Replace("/Assets", ""), "tools", "models_output", "llm");
+
+    const string ChatGguf  = "qwen2.5-1.5b-instruct-q4_k_m.gguf";
+    const string EmbedGguf = "nomic-embed-text-v1.5.Q4_K_M.gguf";
+
     [MenuItem("Diakonie/Setup Local LLM")]
     static void Run()
     {
@@ -21,45 +28,29 @@ public static class DiakonieLocalLLMSetup
         }
 
         // ── 1. LocalLLM GameObject ────────────────────────────────────────
-        var existing = GameObject.Find("LocalLLM");
-        if (existing != null)
-        {
-            Debug.Log("[LocalLLMSetup] LocalLLM-Objekt bereits vorhanden, überspringe Erstellung.");
-        }
-        else
-        {
-            existing = new GameObject("LocalLLM");
-            Debug.Log("[LocalLLMSetup] LocalLLM-Objekt erstellt.");
-        }
+        var go = GameObject.Find("LocalLLM") ?? new GameObject("LocalLLM");
 
-        // ── 2. LLM (Chat-Modell) ──────────────────────────────────────────
-        // Mehrere LLM-Komponenten auf demselben GO werden anhand des Typs unterschieden.
-        // Wir nutzen GetComponents<LLM>() um Chat- vs. Embedding-LLM zu trennen.
-        var allLlms = existing.GetComponents<LLM>();
-        LLM llm = allLlms.Length > 0 ? allLlms[0] : existing.AddComponent<LLM>();
+        // ── 2. Chat-LLM ───────────────────────────────────────────────────
+        var allLlms = go.GetComponents<LLM>();
+        LLM llm = allLlms.Length > 0 ? allLlms[0] : go.AddComponent<LLM>();
         llm.dontDestroyOnLoad = false;
         llm.numThreads = 4;
         llm.numGPULayers = 0;
         llm.contextSize = 4096;
         llm.batchSize = 512;
-        EditorUtility.SetDirty(llm);
-        Debug.Log("[LocalLLMSetup] Chat-LLM konfiguriert. Bitte GGUF-Chat-Modell im Inspector setzen.");
+        SetModelIfFound(llm, ChatGguf, "Chat");
 
-        // ── 3. LLM (Embedding-Modell) ─────────────────────────────────────
-        // Separates LLM für RAG-Embeddings — vermeidet LLMEmbedder-Warning.
-        // Empfohlen: nomic-embed-text-v1.5.Q4_K_M.gguf (~83 MB)
-        // Download: python tools/download_llm_model.py --model nomic-embed
-        LLM llmEmbed = allLlms.Length > 1 ? allLlms[1] : existing.AddComponent<LLM>();
+        // ── 3. Embedding-LLM ──────────────────────────────────────────────
+        LLM llmEmbed = allLlms.Length > 1 ? allLlms[1] : go.AddComponent<LLM>();
         llmEmbed.dontDestroyOnLoad = false;
         llmEmbed.numThreads = 2;
         llmEmbed.numGPULayers = 0;
         llmEmbed.contextSize = 512;
         llmEmbed.batchSize = 512;
-        EditorUtility.SetDirty(llmEmbed);
-        Debug.Log("[LocalLLMSetup] Embedding-LLM konfiguriert. Bitte nomic-embed GGUF im Inspector setzen.");
+        SetModelIfFound(llmEmbed, EmbedGguf, "Embedding");
 
-        // ── 4. LLMAgent (Chat-Interface) ─────────────────────────────────
-        var agent = existing.GetComponent<LLMAgent>() ?? existing.AddComponent<LLMAgent>();
+        // ── 4. LLMAgent ───────────────────────────────────────────────────
+        var agent = go.GetComponent<LLMAgent>() ?? go.AddComponent<LLMAgent>();
         agent.llm = llm;
         agent.systemPrompt =
             "Du bist ein präziser medizinischer Dokumentationsassistent der Bergischen Diakonie. " +
@@ -67,49 +58,50 @@ public static class DiakonieLocalLLMSetup
             "Antworte ausschließlich auf Deutsch. Erfinde keine Informationen.";
         EditorUtility.SetDirty(agent);
 
-        // ── 5. RAG (Wissens-Retrieval) ────────────────────────────────────
-        var rag = existing.GetComponent<RAG>() ?? existing.AddComponent<RAG>();
+        // ── 5. RAG ────────────────────────────────────────────────────────
+        var rag = go.GetComponent<RAG>() ?? go.AddComponent<RAG>();
         rag.Init(SearchMethods.DBSearch, ChunkingMethods.SentenceSplitter, llmEmbed);
         EditorUtility.SetDirty(rag);
-        Debug.Log("[LocalLLMSetup] RAG mit dediziertem Embedding-LLM konfiguriert.");
 
-        // ── 6. LocalDocumentationService ────────────────────────────────
-        var docService = existing.GetComponent<LocalDocumentationService>()
-            ?? existing.AddComponent<LocalDocumentationService>();
+        // ── 6. LocalDocumentationService ──────────────────────────────────
+        var docService = go.GetComponent<LocalDocumentationService>()
+            ?? go.AddComponent<LocalDocumentationService>();
         docService.llmAgent = agent;
         docService.rag      = rag;
         docService.guidelinesFileName = "guidelines_pflege.txt";
         docService.ragStorePath       = "PflegeRAG.zip";
         EditorUtility.SetDirty(docService);
-        Debug.Log("[LocalLLMSetup] LocalDocumentationService verdrahtet.");
 
-        // ── 7. CareDocUI + CareDocumentationManager verdrahten ──────────
+        // ── 7. Scene-Verdrahtung ──────────────────────────────────────────
         var careDocUI = Object.FindFirstObjectByType<CareDocUI>();
-        if (careDocUI != null)
-        {
-            careDocUI.localDocService = docService;
-            EditorUtility.SetDirty(careDocUI);
-            Debug.Log("[LocalLLMSetup] CareDocUI.localDocService gesetzt.");
-        }
+        if (careDocUI != null) { careDocUI.localDocService = docService; EditorUtility.SetDirty(careDocUI); }
         else Debug.LogWarning("[LocalLLMSetup] CareDocUI nicht gefunden.");
 
-        var manager = Object.FindFirstObjectByType<CareDocumentationManager>();
-        if (manager != null)
-        {
-            manager.localDocService = docService;
-            EditorUtility.SetDirty(manager);
-            Debug.Log("[LocalLLMSetup] CareDocumentationManager.localDocService gesetzt.");
-        }
+        var mgr = Object.FindFirstObjectByType<CareDocumentationManager>();
+        if (mgr != null) { mgr.localDocService = docService; EditorUtility.SetDirty(mgr); }
         else Debug.LogWarning("[LocalLLMSetup] CareDocumentationManager nicht gefunden.");
 
-        // ── 8. Szene speichern ────────────────────────────────────────────
+        // ── 8. Speichern ──────────────────────────────────────────────────
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene, "Assets/Scenes/Main.unity");
-        Debug.Log("[LocalLLMSetup] ✓ Setup abgeschlossen.\n" +
-                  "Nächste Schritte:\n" +
-                  "  1. python tools/download_llm_model.py              (Qwen2.5-1.5B Chat, ~1GB)\n" +
-                  "  2. python tools/download_llm_model.py --model nomic-embed  (Embedding, ~83MB)\n" +
-                  "  3. LocalLLM → LLM[0] (Chat): GGUF-Pfad setzen\n" +
-                  "  4. LocalLLM → LLM[1] (Embed): nomic-embed GGUF-Pfad setzen");
+        Debug.Log("[LocalLLMSetup] ✓ Fertig. Szene gespeichert.");
+    }
+
+    static void SetModelIfFound(LLM llm, string filename, string label)
+    {
+        string fullPath = Path.Combine(ModelsDir, filename);
+        if (File.Exists(fullPath))
+        {
+            llm.SetModel(fullPath);
+            EditorUtility.SetDirty(llm);
+            Debug.Log($"[LocalLLMSetup] {label}-GGUF gesetzt: {filename}");
+        }
+        else
+        {
+            EditorUtility.SetDirty(llm);
+            Debug.LogWarning($"[LocalLLMSetup] {label}-GGUF nicht gefunden: {fullPath}\n" +
+                             $"Bitte: python tools/download_llm_model.py" +
+                             (label == "Embedding" ? " --model nomic-embed" : ""));
+        }
     }
 }
