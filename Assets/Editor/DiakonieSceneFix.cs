@@ -153,7 +153,31 @@ public static class DiakonieSceneFix
             else { Debug.LogWarning("[SceneFix] BtnLLM nicht gefunden — erst 'Diakonie > Setup UI' ausführen."); }
         }
 
-        // ── 7. LLM contextSize auf 8192 setzen ───────────────────────────────
+        // ── 7. LocalDocumentationService.rag deaktivieren wenn kein separates Embeddings-LLM ──
+        var localDocService = Object.FindFirstObjectByType<LocalDocumentationService>();
+        if (localDocService != null && localDocService.rag != null)
+        {
+            var ragSearch = localDocService.rag.GetComponent<SearchMethod>()
+                            ?? localDocService.rag.GetComponentInChildren<SearchMethod>();
+            var embeddingsLlm = ragSearch?.llmEmbedder?.llm;
+            var chatLlm = localDocService.llmAgent?.llm;
+
+            bool hasDedicatedEmbeddingsLlm = embeddingsLlm != null
+                                             && embeddingsLlm.embeddingsOnly
+                                             && embeddingsLlm != chatLlm;
+            if (!hasDedicatedEmbeddingsLlm)
+            {
+                localDocService.rag = null;
+                EditorUtility.SetDirty(localDocService);
+                Debug.Log("[SceneFix] LocalDocumentationService.rag = null (kein separates Embeddings-LLM konfiguriert — RAG deaktiviert).");
+            }
+            else
+            {
+                Debug.Log("[SceneFix] RAG: separates Embeddings-LLM erkannt, RAG bleibt aktiv.");
+            }
+        }
+
+        // ── 9. LLM contextSize auf 8192 setzen ───────────────────────────────
         var localLLM = GameObject.Find("LocalLLM");
         if (localLLM != null)
         {
@@ -168,7 +192,7 @@ public static class DiakonieSceneFix
         }
         else { Debug.LogWarning("[SceneFix] LocalLLM GameObject nicht gefunden."); }
 
-        // ── 8. Szene speichern ────────────────────────────────────────────────
+        // ── 10. Szene speichern ───────────────────────────────────────────────
         EditorUtility.SetDirty(careDocUI);
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene, "Assets/Scenes/Main.unity");

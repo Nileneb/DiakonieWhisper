@@ -207,6 +207,15 @@ namespace BergischeDiakonie.Speech
             if (rag == null || !_ragLoaded || rag.Count() == 0)
                 return string.Empty;
 
+            // Cached RAG store may have loaded even when embeddings are broken —
+            // re-check here to prevent LLMUnity from logging its internal error
+            if (!IsEmbeddingsModelReady())
+            {
+                _ragLoaded = false;
+                Debug.LogWarning("[LocalDocService] Embeddings-Modell nicht bereit — RAG deaktiviert.");
+                return string.Empty;
+            }
+
             try
             {
                 (string[] chunks, float[] _) = await rag.Search(query, 3);
@@ -228,7 +237,12 @@ namespace BergischeDiakonie.Speech
             if (rag == null) return false;
             var search = rag.GetComponent<SearchMethod>();
             if (search == null) search = rag.GetComponentInChildren<SearchMethod>();
-            return search?.llmEmbedder?.llm?.embeddingsOnly == true;
+            var embeddingsLlm = search?.llmEmbedder?.llm;
+            if (embeddingsLlm == null || !embeddingsLlm.embeddingsOnly) return false;
+            // A chat LLM set to embeddingsOnly=true still can't produce embeddings —
+            // require a SEPARATE LLM instance dedicated to embeddings
+            if (llmAgent != null && embeddingsLlm == llmAgent.llm) return false;
+            return true;
         }
 
         static string BuildPrompt(string rawProtocol, string ragContext)
