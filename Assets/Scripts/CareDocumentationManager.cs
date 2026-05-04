@@ -421,6 +421,11 @@ namespace BergischeDiakonie.Speech
                     transcripts = new List<AsrService.TranscriptResult>();
                     const int maxChunkSamples = 16000 * 28;
 
+                    // Diagnostic: log first 3 segments
+                    if (speakers.Count > 0)
+                        Debug.Log($"[BatchProcess] Seg[0]: {speakers[0].StartSec:F2}s-{speakers[0].EndSec:F2}s " +
+                                  $"({speakers[0].SpeakerName}), samples.Length={samples.Length}");
+
                     foreach (var seg in speakers)
                     {
                         int startIdx = (int)(seg.StartSec * 16000);
@@ -436,11 +441,14 @@ namespace BergischeDiakonie.Speech
                             Array.Copy(samples, offset, chunk, 0, len);
                             float chunkStartSec = (float)offset / 16000f;
                             var t = _asr.Transcribe(chunk, chunkStartSec);
+                            // Log every 20th result so we can see if ASR produces anything
+                            if (transcripts.Count % 20 == 0)
+                                Debug.Log($"[ASR] #{transcripts.Count} t={chunkStartSec:F1}s len={len} text='{t.Text}'");
                             if (!string.IsNullOrWhiteSpace(t.Text)) transcripts.Add(t);
                         }
                     }
 
-                    Debug.Log($"[BatchProcess] ASR: {transcripts.Count} Transkripte aus {speakers.Count} Segmenten");
+                    Debug.Log($"[BatchProcess] ASR fertig: {transcripts.Count} Transkripte aus {speakers.Count} Segmenten");
                 });
 
                 var merged = TranscriptMergeService.Merge(transcripts, speakers);
