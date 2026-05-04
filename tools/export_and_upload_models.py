@@ -130,11 +130,15 @@ def download_whisper():
     for e in entries:
         print(f"    {e}")
 
-    # Extract encoder — looks for *encoder*.onnx or *encoder.onnx
+    # Prefer int8-quantized variants (smaller, faster on CPU)
     encoder_suffix = next(
+        (e for e in entries if "encoder" in e.lower() and e.endswith(".int8.onnx")), None
+    ) or next(
         (e for e in entries if "encoder" in e.lower() and e.endswith(".onnx")), None
     )
     decoder_suffix = next(
+        (e for e in entries if "decoder" in e.lower() and e.endswith(".int8.onnx")), None
+    ) or next(
         (e for e in entries if "decoder" in e.lower() and e.endswith(".onnx")), None
     )
     tokens_suffix = next(

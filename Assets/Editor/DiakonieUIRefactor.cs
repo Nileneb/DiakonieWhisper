@@ -46,6 +46,17 @@ public static class DiakonieUIRefactor
         }
         else Debug.LogWarning("[DiakonieUIRefactor] ModelLoader nicht gefunden.");
 
+        // ── 1b. CareDocumentationManager: medium-* Modellnamen setzen ────
+        var manager = Object.FindFirstObjectByType<CareDocumentationManager>();
+        if (manager != null)
+        {
+            manager.whisperEncoder = "medium-encoder.onnx";
+            manager.whisperDecoder = "medium-decoder.onnx";
+            manager.whisperTokens  = "medium-tokens.txt";
+            EditorUtility.SetDirty(manager);
+            Debug.Log("[DiakonieUIRefactor] Whisper-medium Modellnamen gesetzt.");
+        }
+
         // ── 2. Doppeltes PanelFilePath entfernen ──────────────────────────
         var allPanels = Object.FindObjectsByType<GameObject>(
             FindObjectsInactive.Include, FindObjectsSortMode.None);

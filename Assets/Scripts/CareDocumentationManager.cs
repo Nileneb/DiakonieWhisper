@@ -28,6 +28,9 @@ namespace BergischeDiakonie.Speech
         public string segmentationModel = "sherpa-onnx-pyannote-segmentation-3-0.onnx";
         public string embeddingModel = "3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx";
 
+        [Header("VAD")]
+        [Range(0.1f, 0.9f)] public float vadThreshold = 0.35f;
+
         [Header("Diarization")]
         [Range(1, 2)] public int minSpeakers = 1;
         [Range(2, 8)] public int maxSpeakers = 5;
@@ -211,7 +214,7 @@ namespace BergischeDiakonie.Speech
                 }
 
                 OnStatusMessage?.Invoke("VAD wird geladen...");
-                _vad = new VadService(MP(vadModel));
+                _vad = new VadService(MP(vadModel), threshold: vadThreshold);
 
                 OnStatusMessage?.Invoke("Whisper ASR wird geladen...");
                 _asr = new AsrService(MP(whisperEncoder), MP(whisperDecoder),
@@ -330,14 +333,26 @@ namespace BergischeDiakonie.Speech
             {
                 if (_liveTranscripts.Count == 0)
                 {
-                    OnStatusMessage?.Invoke("Keine Sprache erkannt.");
-                    return;
+                    if (samples.Length > 0)
+                    {
+                        OnStatusMessage?.Invoke("Kein VAD-Segment erkannt — Direkttranskription...");
+                        var fallback = await UniTask.RunOnThreadPool(
+                            () => _asr.Transcribe(samples, 0f));
+                        if (!string.IsNullOrEmpty(fallback.Text))
+                            _liveTranscripts.Add(fallback);
+                    }
+                    if (_liveTranscripts.Count == 0)
+                    {
+                        OnStatusMessage?.Invoke("Keine Sprache erkannt.");
+                        return;
+                    }
                 }
 
                 List<DiarizationService.SpeakerSegment> speakers = null;
 
-                // Diarization on background thread (UniTask)
+                OnDiarizationProgress?.Invoke(0f);
                 await UniTask.RunOnThreadPool(() => { speakers = _diarizer.Process(samples); });
+                OnDiarizationProgress?.Invoke(1f);
 
                 // Merge with already-transcribed segments
                 var merged = TranscriptMergeService.Merge(_liveTranscripts, speakers);
